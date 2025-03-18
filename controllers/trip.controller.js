@@ -1,4 +1,5 @@
 const db = require('../models');
+const { Sequelize, Op } = require('sequelize'); // Direct import of Sequelize and Op
 const Trip = db.Trip;
 const Route = db.Route;
 const Stop = db.Stop;
@@ -6,7 +7,8 @@ const RouteTracking = db.RouteTracking;
 const Vehicle = db.Vehicle;
 const Driver = db.Driver;
 const User = db.User;
-const { Op } = db.Sequelize;
+
+// The rest of your code remains the same, just make sure to use Op instead of db.Sequelize.Op
 
 // Get upcoming trips
 exports.getUpcomingTrips = async (req, res) => {
