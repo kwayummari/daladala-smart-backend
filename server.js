@@ -43,6 +43,9 @@ app.use('/api/vehicles', require('./routes/vehicle.routes'));
 app.use('/api/trips', require('./routes/trip.routes'));
 app.use('/api/bookings', require('./routes/booking.routes'));
 app.use('/api/payments', require('./routes/payment.routes'));
+app.use('/api/drivers', require('./routes/driver.routes'));
+app.use('/api/schedules', require('./routes/schedule.routes'));
+app.use('/api/reviews', require('./routes/review.routes'));
 
 // Handle 404 errors
 app.use((req, res) => {
