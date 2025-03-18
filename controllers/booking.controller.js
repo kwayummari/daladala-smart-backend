@@ -5,7 +5,7 @@ const Stop = db.Stop;
 const Fare = db.Fare;
 const User = db.User;
 const Notification = db.Notification;
-const { Op } = db.Sequelize;
+const { Sequelize, Op } = require('sequelize');
 
 // Create booking
 exports.createBooking = async (req, res) => {
