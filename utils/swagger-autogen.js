@@ -2,6 +2,7 @@ const swaggerAutogen = require('swagger-autogen')();
 
 // Swagger document options
 const doc = {
+  openapi: "3.1.0",
   info: {
     title: 'Daladala Smart API',
     description: 'API documentation for Daladala Smart, a public transportation app for daladala buses in Tanzania',

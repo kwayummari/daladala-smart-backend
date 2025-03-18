@@ -1,5 +1,6 @@
 {
   "swagger": "2.0",
+  "openapi": "3.1.0",
   "info": {
     "title": "Daladala Smart API",
     "description": "API documentation for Daladala Smart, a public transportation app for daladala buses in Tanzania",
@@ -14,14 +15,12 @@
       "url": "https://opensource.org/licenses/MIT"
     }
   },
-  "host": "localhost:3000",
   "servers": [
     {
       "url": "http://localhost:3000/api",
       "description": "Development server"
     }
   ],
-  "basePath": "/",
   "tags": [
     {
       "name": "Auth",
@@ -72,16 +71,6 @@
       "description": "User notifications"
     }
   ],
-  "schemes": [
-    "http"
-  ],
-  "securityDefinitions": {
-    "bearerAuth": {
-      "type": "http",
-      "scheme": "bearer",
-      "bearerFormat": "JWT"
-    }
-  },
   "paths": {
     "/": {
       "get": {
@@ -742,17 +731,9 @@
         }
       }
     },
-    "/api/stops/{id}": {
+    "/api/stops/search": {
       "get": {
         "description": "",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          }
-        ],
         "responses": {
           "default": {
             "description": ""
@@ -760,7 +741,7 @@
         }
       }
     },
-    "/api/stops/search": {
+    "/api/stops/{id}": {
       "get": {
         "description": "",
         "responses": {
@@ -2516,606 +2497,615 @@
       }
     }
   },
-  "definitions": {
-    "User": {
-      "type": "object",
-      "properties": {
-        "user_id": {
-          "type": "number",
-          "example": 1
-        },
-        "role_id": {
-          "type": "number",
-          "example": 2
-        },
-        "first_name": {
-          "type": "string",
-          "example": "John"
-        },
-        "last_name": {
-          "type": "string",
-          "example": "Doe"
-        },
-        "email": {
-          "type": "string",
-          "example": "john@example.com"
-        },
-        "phone": {
-          "type": "string",
-          "example": "+255712345679"
-        },
-        "profile_picture": {
-          "type": "string",
-          "example": "john_profile.jpg"
-        },
-        "is_verified": {
-          "type": "boolean",
-          "example": true
-        },
-        "status": {
-          "type": "string",
-          "example": "active"
-        },
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:13:15.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:13:15.000Z"
+  "components": {
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "number",
+            "example": 1
+          },
+          "role_id": {
+            "type": "number",
+            "example": 2
+          },
+          "first_name": {
+            "type": "string",
+            "example": "John"
+          },
+          "last_name": {
+            "type": "string",
+            "example": "Doe"
+          },
+          "email": {
+            "type": "string",
+            "example": "john@example.com"
+          },
+          "phone": {
+            "type": "string",
+            "example": "+255712345679"
+          },
+          "profile_picture": {
+            "type": "string",
+            "example": "john_profile.jpg"
+          },
+          "is_verified": {
+            "type": "boolean",
+            "example": true
+          },
+          "status": {
+            "type": "string",
+            "example": "active"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:13:15.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:13:15.000Z"
+          }
+        }
+      },
+      "UserRole": {
+        "type": "object",
+        "properties": {
+          "role_id": {
+            "type": "number",
+            "example": 2
+          },
+          "role_name": {
+            "type": "string",
+            "example": "passenger"
+          },
+          "description": {
+            "type": "string",
+            "example": "Regular app user who can book trips"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:10:20.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:10:20.000Z"
+          }
+        }
+      },
+      "Route": {
+        "type": "object",
+        "properties": {
+          "route_id": {
+            "type": "number",
+            "example": 1
+          },
+          "route_number": {
+            "type": "string",
+            "example": "R001"
+          },
+          "route_name": {
+            "type": "string",
+            "example": "Mbezi - CBD"
+          },
+          "start_point": {
+            "type": "string",
+            "example": "Mbezi Mwisho"
+          },
+          "end_point": {
+            "type": "string",
+            "example": "Posta CBD"
+          },
+          "description": {
+            "type": "string",
+            "example": "Route from Mbezi to City Center via Mwenge and Morocco"
+          },
+          "distance_km": {
+            "type": "number",
+            "example": 18.5
+          },
+          "estimated_time_minutes": {
+            "type": "number",
+            "example": 45
+          },
+          "status": {
+            "type": "string",
+            "example": "active"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:13:15.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:13:15.000Z"
+          }
+        }
+      },
+      "Stop": {
+        "type": "object",
+        "properties": {
+          "stop_id": {
+            "type": "number",
+            "example": 1
+          },
+          "stop_name": {
+            "type": "string",
+            "example": "Mbezi Mwisho"
+          },
+          "latitude": {
+            "type": "number",
+            "example": -6.7402
+          },
+          "longitude": {
+            "type": "number",
+            "example": 39.1589
+          },
+          "address": {
+            "type": "string",
+            "example": "Mbezi Louis, Sam Nujoma Road"
+          },
+          "is_major": {
+            "type": "boolean",
+            "example": true
+          },
+          "status": {
+            "type": "string",
+            "example": "active"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:13:15.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:13:15.000Z"
+          }
+        }
+      },
+      "Trip": {
+        "type": "object",
+        "properties": {
+          "trip_id": {
+            "type": "number",
+            "example": 1
+          },
+          "schedule_id": {
+            "type": "number",
+            "example": 1
+          },
+          "route_id": {
+            "type": "number",
+            "example": 1
+          },
+          "vehicle_id": {
+            "type": "number",
+            "example": 1
+          },
+          "driver_id": {
+            "type": "number",
+            "example": 1
+          },
+          "start_time": {
+            "type": "string",
+            "example": "2025-03-18T06:00:00.000Z"
+          },
+          "end_time": {},
+          "status": {
+            "type": "string",
+            "example": "in_progress"
+          },
+          "current_stop_id": {
+            "type": "number",
+            "example": 2
+          },
+          "next_stop_id": {
+            "type": "number",
+            "example": 3
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:15:20.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:15:20.000Z"
+          }
+        }
+      },
+      "Booking": {
+        "type": "object",
+        "properties": {
+          "booking_id": {
+            "type": "number",
+            "example": 1
+          },
+          "user_id": {
+            "type": "number",
+            "example": 2
+          },
+          "trip_id": {
+            "type": "number",
+            "example": 1
+          },
+          "pickup_stop_id": {
+            "type": "number",
+            "example": 1
+          },
+          "dropoff_stop_id": {
+            "type": "number",
+            "example": 4
+          },
+          "booking_time": {
+            "type": "string",
+            "example": "2025-03-18T02:15:20.000Z"
+          },
+          "fare_amount": {
+            "type": "number",
+            "example": 1500
+          },
+          "passenger_count": {
+            "type": "number",
+            "example": 1
+          },
+          "status": {
+            "type": "string",
+            "example": "in_progress"
+          },
+          "payment_status": {
+            "type": "string",
+            "example": "paid"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:15:20.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:15:20.000Z"
+          }
+        }
+      },
+      "Payment": {
+        "type": "object",
+        "properties": {
+          "payment_id": {
+            "type": "number",
+            "example": 1
+          },
+          "booking_id": {
+            "type": "number",
+            "example": 1
+          },
+          "user_id": {
+            "type": "number",
+            "example": 2
+          },
+          "amount": {
+            "type": "number",
+            "example": 1500
+          },
+          "currency": {
+            "type": "string",
+            "example": "TZS"
+          },
+          "payment_method": {
+            "type": "string",
+            "example": "mobile_money"
+          },
+          "transaction_id": {
+            "type": "string",
+            "example": "MM123456789"
+          },
+          "payment_time": {
+            "type": "string",
+            "example": "2025-03-18T02:20:20.000Z"
+          },
+          "status": {
+            "type": "string",
+            "example": "completed"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:15:20.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:15:20.000Z"
+          }
+        }
+      },
+      "Driver": {
+        "type": "object",
+        "properties": {
+          "driver_id": {
+            "type": "number",
+            "example": 1
+          },
+          "user_id": {
+            "type": "number",
+            "example": 6
+          },
+          "license_number": {
+            "type": "string",
+            "example": "DL12345678"
+          },
+          "license_expiry": {
+            "type": "string",
+            "example": "2025-12-31"
+          },
+          "id_number": {
+            "type": "string",
+            "example": "ID12345678"
+          },
+          "experience_years": {
+            "type": "number",
+            "example": 5
+          },
+          "rating": {
+            "type": "number",
+            "example": 4.75
+          },
+          "total_ratings": {
+            "type": "number",
+            "example": 120
+          },
+          "is_available": {
+            "type": "boolean",
+            "example": true
+          },
+          "status": {
+            "type": "string",
+            "example": "active"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:13:15.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:13:15.000Z"
+          }
+        }
+      },
+      "Vehicle": {
+        "type": "object",
+        "properties": {
+          "vehicle_id": {
+            "type": "number",
+            "example": 1
+          },
+          "driver_id": {
+            "type": "number",
+            "example": 1
+          },
+          "plate_number": {
+            "type": "string",
+            "example": "T123ABC"
+          },
+          "vehicle_type": {
+            "type": "string",
+            "example": "daladala"
+          },
+          "model": {
+            "type": "string",
+            "example": "Toyota Coaster"
+          },
+          "year": {
+            "type": "number",
+            "example": 2018
+          },
+          "capacity": {
+            "type": "number",
+            "example": 30
+          },
+          "color": {
+            "type": "string",
+            "example": "Blue/White"
+          },
+          "is_air_conditioned": {
+            "type": "boolean",
+            "example": false
+          },
+          "is_active": {
+            "type": "boolean",
+            "example": true
+          },
+          "status": {
+            "type": "string",
+            "example": "active"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:13:15.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:13:15.000Z"
+          }
+        }
+      },
+      "Review": {
+        "type": "object",
+        "properties": {
+          "review_id": {
+            "type": "number",
+            "example": 1
+          },
+          "user_id": {
+            "type": "number",
+            "example": 2
+          },
+          "trip_id": {
+            "type": "number",
+            "example": 4
+          },
+          "driver_id": {
+            "type": "number",
+            "example": 1
+          },
+          "vehicle_id": {
+            "type": "number",
+            "example": 1
+          },
+          "rating": {
+            "type": "number",
+            "example": 4.5
+          },
+          "comment": {
+            "type": "string",
+            "example": "Very punctual and safe driver"
+          },
+          "review_time": {
+            "type": "string",
+            "example": "2025-03-17T18:00:00.000Z"
+          },
+          "is_anonymous": {
+            "type": "boolean",
+            "example": false
+          },
+          "status": {
+            "type": "string",
+            "example": "approved"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:15:20.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:15:20.000Z"
+          }
+        }
+      },
+      "Notification": {
+        "type": "object",
+        "properties": {
+          "notification_id": {
+            "type": "number",
+            "example": 1
+          },
+          "user_id": {
+            "type": "number",
+            "example": 2
+          },
+          "title": {
+            "type": "string",
+            "example": "Trip Started"
+          },
+          "message": {
+            "type": "string",
+            "example": "Your trip from Mbezi Mwisho to Posta CBD has started."
+          },
+          "type": {
+            "type": "string",
+            "example": "info"
+          },
+          "related_entity": {
+            "type": "string",
+            "example": "trip"
+          },
+          "related_id": {
+            "type": "number",
+            "example": 1
+          },
+          "is_read": {
+            "type": "boolean",
+            "example": false
+          },
+          "read_at": {},
+          "created_at": {
+            "type": "string",
+            "example": "2025-03-18T00:15:20.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "example": "2025-03-18T00:15:20.000Z"
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "properties": {
+          "first_name": {
+            "type": "string",
+            "example": "John"
+          },
+          "last_name": {
+            "type": "string",
+            "example": "Doe"
+          },
+          "email": {
+            "type": "string",
+            "example": "john@example.com"
+          },
+          "phone": {
+            "type": "string",
+            "example": "+255712345679"
+          },
+          "password": {
+            "type": "string",
+            "example": "password123"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "type": "string",
+            "example": "+255712345679"
+          },
+          "password": {
+            "type": "string",
+            "example": "password123"
+          }
+        }
+      },
+      "BookingRequest": {
+        "type": "object",
+        "properties": {
+          "trip_id": {
+            "type": "number",
+            "example": 1
+          },
+          "pickup_stop_id": {
+            "type": "number",
+            "example": 1
+          },
+          "dropoff_stop_id": {
+            "type": "number",
+            "example": 4
+          },
+          "passenger_count": {
+            "type": "number",
+            "example": 1
+          }
+        }
+      },
+      "PaymentRequest": {
+        "type": "object",
+        "properties": {
+          "booking_id": {
+            "type": "number",
+            "example": 1
+          },
+          "payment_method": {
+            "type": "string",
+            "example": "mobile_money"
+          },
+          "transaction_id": {
+            "type": "string",
+            "example": "MM123456789"
+          }
         }
       }
     },
-    "UserRole": {
-      "type": "object",
-      "properties": {
-        "role_id": {
-          "type": "number",
-          "example": 2
-        },
-        "role_name": {
-          "type": "string",
-          "example": "passenger"
-        },
-        "description": {
-          "type": "string",
-          "example": "Regular app user who can book trips"
-        },
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:10:20.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:10:20.000Z"
-        }
-      }
-    },
-    "Route": {
-      "type": "object",
-      "properties": {
-        "route_id": {
-          "type": "number",
-          "example": 1
-        },
-        "route_number": {
-          "type": "string",
-          "example": "R001"
-        },
-        "route_name": {
-          "type": "string",
-          "example": "Mbezi - CBD"
-        },
-        "start_point": {
-          "type": "string",
-          "example": "Mbezi Mwisho"
-        },
-        "end_point": {
-          "type": "string",
-          "example": "Posta CBD"
-        },
-        "description": {
-          "type": "string",
-          "example": "Route from Mbezi to City Center via Mwenge and Morocco"
-        },
-        "distance_km": {
-          "type": "number",
-          "example": 18.5
-        },
-        "estimated_time_minutes": {
-          "type": "number",
-          "example": 45
-        },
-        "status": {
-          "type": "string",
-          "example": "active"
-        },
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:13:15.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:13:15.000Z"
-        }
-      }
-    },
-    "Stop": {
-      "type": "object",
-      "properties": {
-        "stop_id": {
-          "type": "number",
-          "example": 1
-        },
-        "stop_name": {
-          "type": "string",
-          "example": "Mbezi Mwisho"
-        },
-        "latitude": {
-          "type": "number",
-          "example": -6.7402
-        },
-        "longitude": {
-          "type": "number",
-          "example": 39.1589
-        },
-        "address": {
-          "type": "string",
-          "example": "Mbezi Louis, Sam Nujoma Road"
-        },
-        "is_major": {
-          "type": "boolean",
-          "example": true
-        },
-        "status": {
-          "type": "string",
-          "example": "active"
-        },
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:13:15.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:13:15.000Z"
-        }
-      }
-    },
-    "Trip": {
-      "type": "object",
-      "properties": {
-        "trip_id": {
-          "type": "number",
-          "example": 1
-        },
-        "schedule_id": {
-          "type": "number",
-          "example": 1
-        },
-        "route_id": {
-          "type": "number",
-          "example": 1
-        },
-        "vehicle_id": {
-          "type": "number",
-          "example": 1
-        },
-        "driver_id": {
-          "type": "number",
-          "example": 1
-        },
-        "start_time": {
-          "type": "string",
-          "example": "2025-03-18T06:00:00.000Z"
-        },
-        "end_time": {},
-        "status": {
-          "type": "string",
-          "example": "in_progress"
-        },
-        "current_stop_id": {
-          "type": "number",
-          "example": 2
-        },
-        "next_stop_id": {
-          "type": "number",
-          "example": 3
-        },
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:15:20.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:15:20.000Z"
-        }
-      }
-    },
-    "Booking": {
-      "type": "object",
-      "properties": {
-        "booking_id": {
-          "type": "number",
-          "example": 1
-        },
-        "user_id": {
-          "type": "number",
-          "example": 2
-        },
-        "trip_id": {
-          "type": "number",
-          "example": 1
-        },
-        "pickup_stop_id": {
-          "type": "number",
-          "example": 1
-        },
-        "dropoff_stop_id": {
-          "type": "number",
-          "example": 4
-        },
-        "booking_time": {
-          "type": "string",
-          "example": "2025-03-18T02:15:20.000Z"
-        },
-        "fare_amount": {
-          "type": "number",
-          "example": 1500
-        },
-        "passenger_count": {
-          "type": "number",
-          "example": 1
-        },
-        "status": {
-          "type": "string",
-          "example": "in_progress"
-        },
-        "payment_status": {
-          "type": "string",
-          "example": "paid"
-        },
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:15:20.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:15:20.000Z"
-        }
-      }
-    },
-    "Payment": {
-      "type": "object",
-      "properties": {
-        "payment_id": {
-          "type": "number",
-          "example": 1
-        },
-        "booking_id": {
-          "type": "number",
-          "example": 1
-        },
-        "user_id": {
-          "type": "number",
-          "example": 2
-        },
-        "amount": {
-          "type": "number",
-          "example": 1500
-        },
-        "currency": {
-          "type": "string",
-          "example": "TZS"
-        },
-        "payment_method": {
-          "type": "string",
-          "example": "mobile_money"
-        },
-        "transaction_id": {
-          "type": "string",
-          "example": "MM123456789"
-        },
-        "payment_time": {
-          "type": "string",
-          "example": "2025-03-18T02:20:20.000Z"
-        },
-        "status": {
-          "type": "string",
-          "example": "completed"
-        },
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:15:20.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:15:20.000Z"
-        }
-      }
-    },
-    "Driver": {
-      "type": "object",
-      "properties": {
-        "driver_id": {
-          "type": "number",
-          "example": 1
-        },
-        "user_id": {
-          "type": "number",
-          "example": 6
-        },
-        "license_number": {
-          "type": "string",
-          "example": "DL12345678"
-        },
-        "license_expiry": {
-          "type": "string",
-          "example": "2025-12-31"
-        },
-        "id_number": {
-          "type": "string",
-          "example": "ID12345678"
-        },
-        "experience_years": {
-          "type": "number",
-          "example": 5
-        },
-        "rating": {
-          "type": "number",
-          "example": 4.75
-        },
-        "total_ratings": {
-          "type": "number",
-          "example": 120
-        },
-        "is_available": {
-          "type": "boolean",
-          "example": true
-        },
-        "status": {
-          "type": "string",
-          "example": "active"
-        },
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:13:15.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:13:15.000Z"
-        }
-      }
-    },
-    "Vehicle": {
-      "type": "object",
-      "properties": {
-        "vehicle_id": {
-          "type": "number",
-          "example": 1
-        },
-        "driver_id": {
-          "type": "number",
-          "example": 1
-        },
-        "plate_number": {
-          "type": "string",
-          "example": "T123ABC"
-        },
-        "vehicle_type": {
-          "type": "string",
-          "example": "daladala"
-        },
-        "model": {
-          "type": "string",
-          "example": "Toyota Coaster"
-        },
-        "year": {
-          "type": "number",
-          "example": 2018
-        },
-        "capacity": {
-          "type": "number",
-          "example": 30
-        },
-        "color": {
-          "type": "string",
-          "example": "Blue/White"
-        },
-        "is_air_conditioned": {
-          "type": "boolean",
-          "example": false
-        },
-        "is_active": {
-          "type": "boolean",
-          "example": true
-        },
-        "status": {
-          "type": "string",
-          "example": "active"
-        },
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:13:15.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:13:15.000Z"
-        }
-      }
-    },
-    "Review": {
-      "type": "object",
-      "properties": {
-        "review_id": {
-          "type": "number",
-          "example": 1
-        },
-        "user_id": {
-          "type": "number",
-          "example": 2
-        },
-        "trip_id": {
-          "type": "number",
-          "example": 4
-        },
-        "driver_id": {
-          "type": "number",
-          "example": 1
-        },
-        "vehicle_id": {
-          "type": "number",
-          "example": 1
-        },
-        "rating": {
-          "type": "number",
-          "example": 4.5
-        },
-        "comment": {
-          "type": "string",
-          "example": "Very punctual and safe driver"
-        },
-        "review_time": {
-          "type": "string",
-          "example": "2025-03-17T18:00:00.000Z"
-        },
-        "is_anonymous": {
-          "type": "boolean",
-          "example": false
-        },
-        "status": {
-          "type": "string",
-          "example": "approved"
-        },
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:15:20.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:15:20.000Z"
-        }
-      }
-    },
-    "Notification": {
-      "type": "object",
-      "properties": {
-        "notification_id": {
-          "type": "number",
-          "example": 1
-        },
-        "user_id": {
-          "type": "number",
-          "example": 2
-        },
-        "title": {
-          "type": "string",
-          "example": "Trip Started"
-        },
-        "message": {
-          "type": "string",
-          "example": "Your trip from Mbezi Mwisho to Posta CBD has started."
-        },
-        "type": {
-          "type": "string",
-          "example": "info"
-        },
-        "related_entity": {
-          "type": "string",
-          "example": "trip"
-        },
-        "related_id": {
-          "type": "number",
-          "example": 1
-        },
-        "is_read": {
-          "type": "boolean",
-          "example": false
-        },
-        "read_at": {},
-        "created_at": {
-          "type": "string",
-          "example": "2025-03-18T00:15:20.000Z"
-        },
-        "updated_at": {
-          "type": "string",
-          "example": "2025-03-18T00:15:20.000Z"
-        }
-      }
-    },
-    "RegisterRequest": {
-      "type": "object",
-      "properties": {
-        "first_name": {
-          "type": "string",
-          "example": "John"
-        },
-        "last_name": {
-          "type": "string",
-          "example": "Doe"
-        },
-        "email": {
-          "type": "string",
-          "example": "john@example.com"
-        },
-        "phone": {
-          "type": "string",
-          "example": "+255712345679"
-        },
-        "password": {
-          "type": "string",
-          "example": "password123"
-        }
-      }
-    },
-    "LoginRequest": {
-      "type": "object",
-      "properties": {
-        "phone": {
-          "type": "string",
-          "example": "+255712345679"
-        },
-        "password": {
-          "type": "string",
-          "example": "password123"
-        }
-      }
-    },
-    "BookingRequest": {
-      "type": "object",
-      "properties": {
-        "trip_id": {
-          "type": "number",
-          "example": 1
-        },
-        "pickup_stop_id": {
-          "type": "number",
-          "example": 1
-        },
-        "dropoff_stop_id": {
-          "type": "number",
-          "example": 4
-        },
-        "passenger_count": {
-          "type": "number",
-          "example": 1
-        }
-      }
-    },
-    "PaymentRequest": {
-      "type": "object",
-      "properties": {
-        "booking_id": {
-          "type": "number",
-          "example": 1
-        },
-        "payment_method": {
-          "type": "string",
-          "example": "mobile_money"
-        },
-        "transaction_id": {
-          "type": "string",
-          "example": "MM123456789"
-        }
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
       }
     }
   },
