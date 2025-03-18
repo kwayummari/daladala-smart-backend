@@ -1,4 +1,5 @@
 const swaggerAutogen = require('swagger-autogen')();
+const path = require('path');
 
 // Swagger document options
 const doc = {
@@ -124,16 +125,6 @@ const doc = {
       created_at: '2025-03-18T00:13:15.000Z',
       updated_at: '2025-03-18T00:13:15.000Z'
     },
-    RouteStop: {
-      route_stop_id: 1,
-      route_id: 1,
-      stop_id: 1,
-      stop_order: 1,
-      distance_from_start: 0.00,
-      estimated_time_from_start: 0,
-      created_at: '2025-03-18T00:13:15.000Z',
-      updated_at: '2025-03-18T00:13:15.000Z'
-    },
     Trip: {
       trip_id: 1,
       schedule_id: 1,
@@ -147,18 +138,6 @@ const doc = {
       next_stop_id: 3,
       created_at: '2025-03-18T00:15:20.000Z',
       updated_at: '2025-03-18T00:15:20.000Z'
-    },
-    Schedule: {
-      schedule_id: 1,
-      route_id: 1,
-      vehicle_id: 1,
-      driver_id: 1,
-      departure_time: '06:00:00',
-      arrival_time: '06:45:00',
-      day_of_week: 'all',
-      is_active: true,
-      created_at: '2025-03-18T00:13:15.000Z',
-      updated_at: '2025-03-18T00:13:15.000Z'
     },
     Booking: {
       booking_id: 1,
@@ -216,29 +195,6 @@ const doc = {
       created_at: '2025-03-18T00:13:15.000Z',
       updated_at: '2025-03-18T00:13:15.000Z'
     },
-    VehicleLocation: {
-      location_id: 1,
-      vehicle_id: 1,
-      trip_id: 1,
-      latitude: -6.76890000,
-      longitude: 39.21920000,
-      heading: 135.50,
-      speed: 28.50,
-      recorded_at: '2025-03-18T03:15:20.000Z',
-      created_at: '2025-03-18T00:15:20.000Z'
-    },
-    Fare: {
-      fare_id: 1,
-      route_id: 1,
-      start_stop_id: 1,
-      end_stop_id: 4,
-      amount: 1500.00,
-      currency: 'TZS',
-      fare_type: 'standard',
-      is_active: true,
-      created_at: '2025-03-18T00:13:15.000Z',
-      updated_at: '2025-03-18T00:13:15.000Z'
-    },
     Review: {
       review_id: 1,
       user_id: 2,
@@ -266,17 +222,7 @@ const doc = {
       created_at: '2025-03-18T00:15:20.000Z',
       updated_at: '2025-03-18T00:15:20.000Z'
     },
-    RouteTracking: {
-      tracking_id: 1,
-      trip_id: 1,
-      stop_id: 1,
-      arrival_time: '2025-03-18T06:00:00.000Z',
-      departure_time: '2025-03-18T06:05:00.000Z',
-      status: 'departed',
-      created_at: '2025-03-18T00:15:20.000Z',
-      updated_at: '2025-03-18T00:15:20.000Z'
-    },
-    // Request models
+    // Request objects
     RegisterRequest: {
       first_name: 'John',
       last_name: 'Doe',
@@ -295,57 +241,9 @@ const doc = {
       passenger_count: 1
     },
     PaymentRequest: {
-      booking_id: 1, 
+      booking_id: 1,
       payment_method: 'mobile_money',
       transaction_id: 'MM123456789'
-    },
-    ReviewRequest: {
-      trip_id: 1,
-      driver_id: 1,
-      vehicle_id: 1,
-      rating: 4.5,
-      comment: 'Very good service',
-      is_anonymous: false
-    }
-  },
-  components: {
-    schemas: {
-      ErrorResponse: {
-        type: 'object',
-        properties: {
-          status: {
-            type: 'string',
-            example: 'error'
-          },
-          message: {
-            type: 'string',
-            example: 'An error occurred'
-          }
-        }
-      },
-      SuccessResponse: {
-        type: 'object',
-        properties: {
-          status: {
-            type: 'string',
-            example: 'success'
-          },
-          message: {
-            type: 'string',
-            example: 'Operation completed successfully'
-          },
-          data: {
-            type: 'object'
-          }
-        }
-      }
-    },
-    securitySchemes: {
-      bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT'
-      }
     }
   },
   // Global security - all endpoints require JWT unless specified otherwise
@@ -353,7 +251,7 @@ const doc = {
 };
 
 // Output swagger.json file
-const outputFile = './docs/swagger.json';
+const outputFile = './swagger-output.json';
 
 // Array of routes files to scan
 const routes = [
@@ -374,4 +272,6 @@ const routes = [
 // Generate swagger.json
 swaggerAutogen(outputFile, routes, doc).then(() => {
   console.log('Swagger documentation generated');
+  // If you're running this as a part of your startup, you can require your server.js here
+  // require('./server.js');
 });
