@@ -7,6 +7,16 @@ require('dotenv').config();
 // Database connection
 const sequelize = require('./config/db.config');
 
+const swaggerUi = require('swagger-ui-express');
+let swaggerFile;
+
+try {
+  swaggerFile = require('../swagger-output.json');
+} catch (error) {
+  console.warn('Swagger file not found. API documentation will not be available.');
+  swaggerFile = { info: { title: 'API Documentation not available' } };
+}
+
 // Initialize Express app
 const app = express();
 
@@ -46,6 +56,9 @@ app.use('/api/payments', require('./routes/payment.routes'));
 app.use('/api/drivers', require('./routes/driver.routes'));
 app.use('/api/schedules', require('./routes/schedule.routes'));
 app.use('/api/reviews', require('./routes/review.routes'));
+
+// Swagger documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
 // Handle 404 errors
 app.use((req, res) => {
