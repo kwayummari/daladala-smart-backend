@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const stopControllers = require('../controllers/stop.controller');
+const db = require('../models');
 
-// Create the stop controller
+// Define the stop controller
 const stopController = {
   getAllStops: async (req, res) => {
     try {
@@ -88,10 +88,10 @@ const stopController = {
 // Get all stops
 router.get('/', stopController.getAllStops);
 
+// Search stops - this route must come before the :id route to avoid conflicts
+router.get('/search', stopController.searchStops);
+
 // Get stop by id
 router.get('/:id', stopController.getStopById);
-
-// Search stops
-router.get('/search', stopController.searchStops);
 
 module.exports = router;

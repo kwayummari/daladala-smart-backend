@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { verifyToken, isAdmin, isOperator } = require('../middlewares/auth.middleware');
+const db = require('../models');
 
 // Define the vehicle controller
 const vehicleController = {
