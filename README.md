@@ -29,5 +29,5 @@ Backend API for Daladala Smart, a public transportation app for daladala buses i
 
 1. Clone the repository
    ```bash
-   git clone https://github.com/your-username/daladala-smart-backend.git
+   git clone https://github.com/kwayummari/daladala-smart-backend.git
    cd daladala-smart-backend
