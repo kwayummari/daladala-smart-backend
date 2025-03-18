@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const stopController = require('../controllers/stop.controller');
+const stopControllers = require('../controllers/stop.controller');
 
 // Create the stop controller
 const stopController = {
