@@ -62,26 +62,59 @@ exports.getRouteById = async (req, res) => {
 };
 
 // Get route stops
+// Get route stops
 exports.getRouteStops = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Get the route with its stops
+    const route = await Route.findByPk(id, {
+      include: [{
+        model: Stop,
+        through: {
+          model: RouteStop,
+          attributes: ['stop_order', 'distance_from_start', 'estimated_time_from_start']
+        }
+      }]
+    });
+
+    if (!route) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Route not found'
+      });
+    }
+
+    // Get stops ordered by stop_order
     const routeStops = await RouteStop.findAll({
       where: {
         route_id: id
       },
-      include: [{
-        model: Stop,
-        attributes: ['stop_id', 'stop_name', 'latitude', 'longitude', 'address', 'is_major', 'status']
-      }],
+      attributes: ['stop_order', 'distance_from_start', 'estimated_time_from_start'],
       order: [['stop_order', 'ASC']]
     });
 
+    // Create response with stops and their details
+    const stopsWithDetails = [];
+    
+    for (const routeStop of routeStops) {
+      const stop = await Stop.findByPk(routeStop.stop_id);
+      if (stop) {
+        stopsWithDetails.push({
+          ...stop.toJSON(),
+          stop_order: routeStop.stop_order,
+          distance_from_start: routeStop.distance_from_start,
+          estimated_time_from_start: routeStop.estimated_time_from_start
+        });
+      }
+    }
+
     res.status(200).json({
       status: 'success',
-      data: routeStops
+      data: stopsWithDetails
     });
   } catch (error) {
+    console.error('Error fetching route stops:', error);
     res.status(500).json({
       status: 'error',
       message: error.message
