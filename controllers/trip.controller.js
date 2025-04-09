@@ -14,7 +14,6 @@ const User = db.User;
 exports.getUpcomingTrips = async (req, res) => {
   try {
     const { route_id } = req.query;
-    
     let whereClause = {
       status: {
         [Op.in]: ['scheduled', 'in_progress']
@@ -61,6 +60,7 @@ exports.getUpcomingTrips = async (req, res) => {
       order: [['start_time', 'ASC']]
     });
 
+    console.log(trips);
     res.status(200).json({
       status: 'success',
       data: trips
