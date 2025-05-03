@@ -60,7 +60,6 @@ exports.getUpcomingTrips = async (req, res) => {
       order: [['start_time', 'ASC']]
     });
 
-    console.log(trips);
     res.status(200).json({
       status: 'success',
       data: trips
