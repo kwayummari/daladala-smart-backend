@@ -1,7 +1,8 @@
+// Updated models/index.js - Add wallet models and relationships
 const sequelize = require('../config/db.config');
 const { DataTypes } = require('sequelize');
 
-// Import models
+// Import existing models
 const User = require('./user.model')(sequelize, DataTypes);
 const UserRole = require('./user-role.model')(sequelize, DataTypes);
 const Driver = require('./driver.model')(sequelize, DataTypes);
@@ -19,24 +20,23 @@ const Notification = require('./notification.model')(sequelize, DataTypes);
 const VehicleLocation = require('./vehicle-location.model')(sequelize, DataTypes);
 const RouteTracking = require('./route-tracking.model')(sequelize, DataTypes);
 
-// Define relationships
-// User and Role relationship
+// Import new wallet models
+const Wallet = require('./wallet.model')(sequelize, DataTypes);
+const WalletTransaction = require('./wallet-transaction.model')(sequelize, DataTypes);
+
+// Define existing relationships
 User.belongsTo(UserRole, { foreignKey: 'role_id', as: 'role' });
 UserRole.hasMany(User, { foreignKey: 'role_id' });
 
-// User and Driver relationship
 User.hasOne(Driver, { foreignKey: 'user_id' });
 Driver.belongsTo(User, { foreignKey: 'user_id' });
 
-// Driver and Vehicle relationship
 Driver.hasMany(Vehicle, { foreignKey: 'driver_id' });
 Vehicle.belongsTo(Driver, { foreignKey: 'driver_id' });
 
-// Route and Stop relationship (through RouteStop)
 Route.belongsToMany(Stop, { through: RouteStop, foreignKey: 'route_id' });
 Stop.belongsToMany(Route, { through: RouteStop, foreignKey: 'stop_id' });
 
-// Trip relationships
 Trip.belongsTo(Route, { foreignKey: 'route_id' });
 Trip.belongsTo(Vehicle, { foreignKey: 'vehicle_id' });
 Trip.belongsTo(Driver, { foreignKey: 'driver_id' });
@@ -44,44 +44,50 @@ Trip.belongsTo(Schedule, { foreignKey: 'schedule_id' });
 Trip.belongsTo(Stop, { foreignKey: 'current_stop_id', as: 'currentStop' });
 Trip.belongsTo(Stop, { foreignKey: 'next_stop_id', as: 'nextStop' });
 
-// Booking relationships
 Booking.belongsTo(User, { foreignKey: 'user_id' });
 Booking.belongsTo(Trip, { foreignKey: 'trip_id' });
 Booking.belongsTo(Stop, { foreignKey: 'pickup_stop_id', as: 'pickupStop' });
 Booking.belongsTo(Stop, { foreignKey: 'dropoff_stop_id', as: 'dropoffStop' });
 
-// Payment relationship
 Payment.belongsTo(Booking, { foreignKey: 'booking_id' });
 Payment.belongsTo(User, { foreignKey: 'user_id' });
 
-// Review relationships
 Review.belongsTo(User, { foreignKey: 'user_id' });
 Review.belongsTo(Trip, { foreignKey: 'trip_id' });
 Review.belongsTo(Driver, { foreignKey: 'driver_id' });
 Review.belongsTo(Vehicle, { foreignKey: 'vehicle_id' });
 
-// Fare relationships
 Fare.belongsTo(Route, { foreignKey: 'route_id' });
 Fare.belongsTo(Stop, { foreignKey: 'start_stop_id', as: 'startStop' });
 Fare.belongsTo(Stop, { foreignKey: 'end_stop_id', as: 'endStop' });
 
-// Schedule relationships
 Schedule.belongsTo(Route, { foreignKey: 'route_id' });
 Schedule.belongsTo(Vehicle, { foreignKey: 'vehicle_id' });
 Schedule.belongsTo(Driver, { foreignKey: 'driver_id' });
 
-// Notification relationship
 Notification.belongsTo(User, { foreignKey: 'user_id' });
 
-// VehicleLocation relationships
 VehicleLocation.belongsTo(Vehicle, { foreignKey: 'vehicle_id' });
 VehicleLocation.belongsTo(Trip, { foreignKey: 'trip_id' });
 
-// RouteTracking relationships
 RouteTracking.belongsTo(Trip, { foreignKey: 'trip_id' });
 RouteTracking.belongsTo(Stop, { foreignKey: 'stop_id' });
 
-// Export models
+// Define new wallet relationships
+User.hasOne(Wallet, { foreignKey: 'user_id' });
+Wallet.belongsTo(User, { foreignKey: 'user_id' });
+
+Wallet.hasMany(WalletTransaction, { foreignKey: 'wallet_id' });
+WalletTransaction.belongsTo(Wallet, { foreignKey: 'wallet_id' });
+
+User.hasMany(WalletTransaction, { foreignKey: 'user_id' });
+WalletTransaction.belongsTo(User, { foreignKey: 'user_id' });
+
+// Optional: Add relationship to payments
+WalletTransaction.belongsTo(Payment, { foreignKey: 'reference_id', constraints: false });
+WalletTransaction.belongsTo(Booking, { foreignKey: 'reference_id', constraints: false });
+
+// Export updated db object
 const db = {
   sequelize,
   User,
@@ -99,7 +105,9 @@ const db = {
   Schedule,
   Notification,
   VehicleLocation,
-  RouteTracking
+  RouteTracking,
+  Wallet,
+  WalletTransaction
 };
 
 module.exports = db;
