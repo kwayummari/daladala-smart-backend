@@ -1,19 +1,37 @@
+// controllers/payment.controller.js
 const db = require('../models');
 const Payment = db.Payment;
 const Booking = db.Booking;
+const User = db.User;
 const Notification = db.Notification;
+const zenoPayService = require('../services/zenoPayService');
 
 // Process payment
 exports.processPayment = async (req, res) => {
   try {
-    const { booking_id, payment_method, transaction_id = null, payment_details = null } = req.body;
+    const { booking_id, payment_method, phone_number } = req.body;
+
+    // Validate required fields
+    if (!booking_id || !payment_method) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Booking ID and payment method are required'
+      });
+    }
 
     // Check if booking exists and belongs to user
     const booking = await Booking.findOne({
       where: {
         booking_id,
         user_id: req.userId
-      }
+      },
+      include: [{
+        model: db.Trip,
+        include: [{
+          model: db.Route,
+          attributes: ['route_name', 'start_point', 'end_point']
+        }]
+      }]
     });
 
     if (!booking) {
@@ -33,50 +51,296 @@ exports.processPayment = async (req, res) => {
 
     // Check if payment already exists
     const existingPayment = await Payment.findOne({
-      where: {
-        booking_id
-      }
+      where: { booking_id }
     });
 
-    if (existingPayment) {
+    if (existingPayment && existingPayment.status === 'completed') {
       return res.status(400).json({
         status: 'error',
-        message: 'Payment already exists for this booking'
+        message: 'Payment already completed for this booking'
       });
     }
 
-    // Create payment record
-    const payment = await Payment.create({
+    // Get user details
+    const user = await User.findByPk(req.userId);
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
+      });
+    }
+
+    let paymentResult;
+    let paymentData = {
       booking_id,
       user_id: req.userId,
       amount: booking.fare_amount,
       currency: 'TZS',
       payment_method,
-      transaction_id,
-      payment_time: new Date(),
-      status: 'completed',
-      payment_details
-    });
+      status: 'pending'
+    };
 
-    // Update booking payment status
-    await booking.update({
-      payment_status: 'paid',
-      status: 'confirmed'
-    });
+    if (payment_method === 'mobile_money') {
+      // Validate phone number for mobile money
+      if (!phone_number) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Phone number is required for mobile money payment'
+        });
+      }
 
-    // Create notification for user
-    await Notification.create({
-      user_id: req.userId,
-      title: 'Payment Confirmation',
-      message: `Your payment of ${booking.fare_amount} TZS for booking #${booking_id} has been confirmed.`,
-      type: 'success',
-      related_entity: 'payment',
-      related_id: payment.payment_id
-    });
+      // Process mobile money payment via ZenoPay
+      const zenoPaymentData = {
+        bookingId: booking_id,
+        userEmail: user.email,
+        userName: `${user.first_name} ${user.last_name}`,
+        userPhone: phone_number,
+        amount: booking.fare_amount
+      };
+
+      paymentResult = await zenoPayService.processMobileMoneyPayment(zenoPaymentData);
+
+      if (!paymentResult.success) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Failed to initiate mobile money payment',
+          details: paymentResult.error
+        });
+      }
+
+      // Update payment data with ZenoPay details
+      paymentData.transaction_id = paymentResult.data.orderId;
+      paymentData.payment_details = {
+        zenopay_order_id: paymentResult.data.zenoOrderId,
+        reference: paymentResult.data.reference,
+        channel: paymentResult.data.channel,
+        msisdn: paymentResult.data.msisdn,
+        phone_number
+      };
+      paymentData.status = 'pending'; // Payment initiated, waiting for completion
+
+    } else {
+      // For other payment methods (cash, card, wallet)
+      paymentData.status = payment_method === 'cash' ? 'completed' : 'pending';
+      paymentData.payment_time = new Date();
+    }
+
+    // Create or update payment record
+    let payment;
+    if (existingPayment) {
+      payment = await existingPayment.update(paymentData);
+    } else {
+      payment = await Payment.create(paymentData);
+    }
+
+    // Update booking status for completed payments
+    if (paymentData.status === 'completed') {
+      await booking.update({
+        payment_status: 'paid',
+        status: 'confirmed'
+      });
+
+      // Create notification for user
+      await Notification.create({
+        user_id: req.userId,
+        title: 'Payment Confirmation',
+        message: `Your payment of ${booking.fare_amount} TZS for booking #${booking_id} has been confirmed.`,
+        type: 'success',
+        related_entity: 'payment',
+        related_id: payment.payment_id
+      });
+    }
+
+    // Prepare response
+    const responseData = {
+      payment_id: payment.payment_id,
+      booking_id: payment.booking_id,
+      amount: payment.amount,
+      currency: payment.currency,
+      payment_method: payment.payment_method,
+      status: payment.status,
+      payment_time: payment.payment_time
+    };
+
+    // Add ZenoPay specific data for mobile money
+    if (payment_method === 'mobile_money' && paymentResult) {
+      responseData.zenopay = {
+        order_id: paymentResult.data.orderId,
+        reference: paymentResult.data.reference,
+        message: paymentResult.data.message,
+        instructions: 'Please complete the payment on your mobile phone using the USSD prompt or mobile app.'
+      };
+    }
 
     res.status(200).json({
       status: 'success',
-      message: 'Payment processed successfully',
+      message: payment_method === 'mobile_money'
+        ? 'Mobile money payment initiated. Please complete on your phone.'
+        : 'Payment processed successfully',
+      data: responseData
+    });
+
+  } catch (error) {
+    console.error('Payment processing error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error while processing payment'
+    });
+  }
+};
+
+// ZenoPay webhook handler
+exports.handleZenoPayWebhook = async (req, res) => {
+  try {
+    const webhookData = req.body;
+    const apiKey = req.headers['x-api-key'];
+
+    // Verify webhook authenticity
+    if (!zenoPayService.verifyWebhookSignature(webhookData, apiKey)) {
+      console.error('Invalid webhook signature');
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    console.log('ZenoPay Webhook received:', webhookData);
+
+    const { order_id, payment_status, reference } = webhookData;
+
+    // Find payment by transaction_id (which stores our order_id)
+    const payment = await Payment.findOne({
+      where: { transaction_id: order_id },
+      include: [{
+        model: Booking,
+        include: [{
+          model: User,
+          attributes: ['user_id', 'first_name', 'last_name', 'email']
+        }]
+      }]
+    });
+
+    if (!payment) {
+      console.error('Payment not found for order_id:', order_id);
+      return res.status(404).json({ message: 'Payment not found' });
+    }
+
+    const newStatus = zenoPayService.mapPaymentStatus(payment_status);
+
+    // Update payment status
+    await payment.update({
+      status: newStatus,
+      payment_time: newStatus === 'completed' ? new Date() : payment.payment_time,
+      payment_details: {
+        ...payment.payment_details,
+        webhook_data: webhookData,
+        final_status: payment_status,
+        reference
+      }
+    });
+
+    // Update booking if payment completed
+    if (newStatus === 'completed') {
+      await payment.Booking.update({
+        payment_status: 'paid',
+        status: 'confirmed'
+      });
+
+      // Create success notification
+      await Notification.create({
+        user_id: payment.user_id,
+        title: 'Payment Successful',
+        message: `Your mobile money payment of ${payment.amount} TZS has been completed successfully. Booking #${payment.booking_id} is now confirmed.`,
+        type: 'success',
+        related_entity: 'payment',
+        related_id: payment.payment_id
+      });
+
+    } else if (newStatus === 'failed') {
+      // Update booking status for failed payment
+      await payment.Booking.update({
+        payment_status: 'pending',
+        status: 'pending'
+      });
+
+      // Create failure notification
+      await Notification.create({
+        user_id: payment.user_id,
+        title: 'Payment Failed',
+        message: `Your mobile money payment for booking #${payment.booking_id} has failed. Please try again or use a different payment method.`,
+        type: 'error',
+        related_entity: 'payment',
+        related_id: payment.payment_id
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Webhook processed successfully'
+    });
+
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Webhook processing failed'
+    });
+  }
+};
+
+// Check payment status (manual check)
+exports.checkPaymentStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const payment = await Payment.findOne({
+      where: {
+        payment_id: id,
+        user_id: req.userId
+      }
+    });
+
+    if (!payment) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Payment not found'
+      });
+    }
+
+    // For mobile money payments, check status with ZenoPay
+    if (payment.payment_method === 'mobile_money' && payment.transaction_id) {
+      const statusResult = await zenoPayService.checkPaymentStatus(payment.transaction_id);
+
+      if (statusResult.success) {
+        const newStatus = zenoPayService.mapPaymentStatus(statusResult.data.status);
+
+        // Update payment if status changed
+        if (newStatus !== payment.status) {
+          await payment.update({
+            status: newStatus,
+            payment_time: newStatus === 'completed' ? new Date() : payment.payment_time,
+            payment_details: {
+              ...payment.payment_details,
+              status_check: statusResult.data
+            }
+          });
+
+          // Update booking if payment completed
+          if (newStatus === 'completed') {
+            const booking = await Booking.findByPk(payment.booking_id);
+            if (booking) {
+              await booking.update({
+                payment_status: 'paid',
+                status: 'confirmed'
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Refresh payment data
+    await payment.reload();
+
+    res.status(200).json({
+      status: 'success',
       data: {
         payment_id: payment.payment_id,
         booking_id: payment.booking_id,
@@ -84,13 +348,16 @@ exports.processPayment = async (req, res) => {
         currency: payment.currency,
         payment_method: payment.payment_method,
         status: payment.status,
-        payment_time: payment.payment_time
+        payment_time: payment.payment_time,
+        transaction_id: payment.transaction_id
       }
     });
+
   } catch (error) {
+    console.error('Payment status check error:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message
+      message: 'Failed to check payment status'
     });
   }
 };
@@ -98,31 +365,44 @@ exports.processPayment = async (req, res) => {
 // Get payment history
 exports.getPaymentHistory = async (req, res) => {
   try {
-    const payments = await Payment.findAll({
-      where: {
-        user_id: req.userId
-      },
+    const { page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
+
+    const payments = await Payment.findAndCountAll({
+      where: { user_id: req.userId },
       include: [{
         model: Booking,
         include: [{
           model: db.Trip,
           include: [{
             model: db.Route,
-            attributes: ['route_name']
+            attributes: ['route_name', 'start_point', 'end_point']
           }]
         }]
       }],
-      order: [['payment_time', 'DESC']]
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset: parseInt(offset)
     });
 
     res.status(200).json({
       status: 'success',
-      data: payments
+      data: {
+        payments: payments.rows,
+        pagination: {
+          total: payments.count,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(payments.count / limit)
+        }
+      }
     });
+
   } catch (error) {
+    console.error('Payment history error:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message
+      message: 'Failed to fetch payment history'
     });
   }
 };
@@ -172,10 +452,12 @@ exports.getPaymentDetails = async (req, res) => {
       status: 'success',
       data: payment
     });
+
   } catch (error) {
+    console.error('Payment details error:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message
+      message: 'Failed to fetch payment details'
     });
   }
 };
