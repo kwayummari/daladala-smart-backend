@@ -23,7 +23,6 @@ const generateVerificationCode = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// Register new user
 exports.register = async (req, res) => {
   try {
     const { phone, email, password } = req.body;
@@ -67,39 +66,36 @@ exports.register = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Generate verification codes
-    const phoneVerificationCode = generateVerificationCode();
-    const emailVerificationCode = generateVerificationCode();
+    // Generate single verification code for both phone and email
+    const verificationCode = generateVerificationCode();
 
     // Create user
     const user = await User.create({
       role_id: passengerRole.role_id,
       first_name: '',
-      last_name: '', 
+      last_name: '',
       phone: phone,
       email: email,
       password: hashedPassword,
-      phone_verification_code: phoneVerificationCode,
-      email_verification_code: emailVerificationCode,
-      phone_verified: false,
-      email_verified: false,
+      verification_code: verificationCode, // Single code for both
       is_verified: false,
-      status: 'pending', // User status pending until verified
+      status: 'inactive', // User inactive until verified
       verification_code_expires: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
     });
 
     // Send SMS verification
     try {
       await sendSMS({
-        phone: formatPhoneForSMS(phone),
-        message: `Your Daladala Smart verification code is: ${phoneVerificationCode}. Valid for 10 minutes.`
+        phone: phone,
+        message: `${verificationCode} is your Daladala Smart verification code. Valid for 10 minutes.`
       });
+      console.log('✅ SMS sent successfully');
     } catch (smsError) {
       console.error('SMS sending failed:', smsError);
       // Continue with registration even if SMS fails
     }
 
-    // Send Email verification
+    // Send Email verification (same code)
     try {
       await sendEmail({
         to: email,
@@ -107,12 +103,19 @@ exports.register = async (req, res) => {
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #2c5530;">Welcome to Daladala Smart!</h2>
-            <p>Thank you for registering with Daladala Smart. Please verify your email address to complete your registration.</p>
+            <p>Thank you for registering with Daladala Smart. Please verify your account with the code below.</p>
             
             <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
               <h3 style="color: #2c5530; margin: 0;">Your Verification Code</h3>
-              <h1 style="color: #007bff; font-size: 32px; letter-spacing: 5px; margin: 10px 0;">${emailVerificationCode}</h1>
-              <p style="color: #6c757d; margin: 0;">This code expires in 10 minutes</p>
+              <h1 style="color: #007bff; font-size: 32px; letter-spacing: 5px; margin: 10px 0;">${verificationCode}</h1>
+              <p style="color: #6c757d; margin: 0;">Enter this code in the app to verify your account</p>
+              <p style="color: #6c757d; margin: 5px 0 0 0; font-size: 14px;">Code expires in 10 minutes</p>
+            </div>
+            
+            <div style="background-color: #e7f3ff; padding: 15px; border-radius: 6px; margin: 20px 0;">
+              <p style="color: #0066cc; margin: 0; font-size: 14px;">
+                📱 <strong>Note:</strong> The same code was sent to your phone via SMS for your convenience.
+              </p>
             </div>
             
             <p>If you didn't create this account, please ignore this email.</p>
@@ -124,6 +127,7 @@ exports.register = async (req, res) => {
           </div>
         `
       });
+      console.log('✅ Email sent successfully');
     } catch (emailError) {
       console.error('Email sending failed:', emailError);
       // Continue with registration even if email fails
@@ -131,12 +135,13 @@ exports.register = async (req, res) => {
 
     res.status(201).json({
       status: 'success',
-      message: 'Registration successful. Please check your phone and email for verification codes.',
+      message: 'Registration successful. Please check your phone and email for the verification code.',
       data: {
         user_id: user.user_id,
         phone: user.phone,
         email: user.email,
-        verification_required: true
+        verification_required: true,
+        message: 'Same verification code sent to both phone and email'
       }
     });
 
@@ -148,16 +153,21 @@ exports.register = async (req, res) => {
     });
   }
 };
-
-// Verify phone number
-exports.verifyPhone = async (req, res) => {
+exports.verifyAccount = async (req, res) => {
   try {
-    const { phone, code } = req.body;
+    const { identifier, code } = req.body; // identifier can be phone or email
 
     const user = await User.findOne({
       where: {
-        phone: phone,
-        phone_verification_code: code
+        [Op.and]: [
+          {
+            [Op.or]: [
+              { phone: identifier },
+              { email: identifier }
+            ]
+          },
+          { verification_code: code }
+        ]
       }
     });
 
@@ -176,95 +186,52 @@ exports.verifyPhone = async (req, res) => {
       });
     }
 
-    // Update user
+    // Update user - fully verified now
     await user.update({
-      phone_verified: true,
-      phone_verification_code: null,
-      is_verified: user.email_verified, // Only fully verified if both are verified
-      status: user.email_verified ? 'active' : 'pending'
+      is_verified: true,
+      verification_code: null,
+      verification_code_expires: null,
+      status: 'active' // User is now active
+    });
+
+    // Generate JWT token for immediate login
+    const token = jwt.sign({ id: user.user_id }, config.secret, {
+      expiresIn: config.jwtExpiration
     });
 
     res.status(200).json({
       status: 'success',
-      message: 'Phone number verified successfully',
+      message: 'Account verified successfully! Welcome to Daladala Smart!',
       data: {
-        phone_verified: true,
-        fully_verified: user.email_verified
+        user: {
+          id: user.user_id,
+          phone: user.phone,
+          email: user.email,
+          is_verified: true,
+          status: 'active'
+        },
+        accessToken: token
       }
     });
 
   } catch (error) {
-    console.error('Phone verification error:', error);
+    console.error('Verification error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Verification failed. Please try again.'
     });
   }
 };
-
-// Verify email
-exports.verifyEmail = async (req, res) => {
-  try {
-    const { email, code } = req.body;
-
-    const user = await User.findOne({
-      where: {
-        email: email,
-        email_verification_code: code
-      }
-    });
-
-    if (!user) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Invalid verification code'
-      });
-    }
-
-    // Check if code is expired
-    if (user.verification_code_expires < new Date()) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Verification code has expired'
-      });
-    }
-
-    // Update user
-    await user.update({
-      email_verified: true,
-      email_verification_code: null,
-      is_verified: user.phone_verified, // Only fully verified if both are verified
-      status: user.phone_verified ? 'active' : 'pending'
-    });
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Email verified successfully',
-      data: {
-        email_verified: true,
-        fully_verified: user.phone_verified
-      }
-    });
-
-  } catch (error) {
-    console.error('Email verification error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Verification failed. Please try again.'
-    });
-  }
-};
-
-// Resend verification codes
+// Resend verification code
 exports.resendVerificationCode = async (req, res) => {
   try {
-    const { phone, email, type } = req.body; // type: 'phone' or 'email'
+    const { identifier } = req.body; // phone or email
 
     const user = await User.findOne({
       where: {
         [Op.or]: [
-          { phone: phone },
-          { email: email }
+          { phone: identifier },
+          { email: identifier }
         ]
       }
     });
@@ -276,68 +243,59 @@ exports.resendVerificationCode = async (req, res) => {
       });
     }
 
+    if (user.is_verified) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Account is already verified'
+      });
+    }
+
     // Generate new verification code
     const newCode = generateVerificationCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    if (type === 'phone') {
-      await user.update({
-        phone_verification_code: newCode,
-        verification_code_expires: expiresAt
+    await user.update({
+      verification_code: newCode,
+      verification_code_expires: expiresAt
+    });
+
+    // Send SMS
+    try {
+      await sendSMS({
+        phone: user.phone,
+        message: `${newCode} is your new Daladala Smart verification code. Valid for 10 minutes.`
       });
+    } catch (smsError) {
+      console.error('SMS resend failed:', smsError);
+    }
 
-      // Send SMS
-      try {
-        await sendSMS({
-          phone: formatPhoneForSMS(user.phone),
-          message: `Your new Daladala Smart verification code is: ${newCode}. Valid for 10 minutes.`
-        });
-      } catch (smsError) {
-        console.error('SMS resend failed:', smsError);
-        return res.status(500).json({
-          status: 'error',
-          message: 'Failed to send SMS. Please try again.'
-        });
-      }
-
-    } else if (type === 'email') {
-      await user.update({
-        email_verification_code: newCode,
-        verification_code_expires: expiresAt
-      });
-
-      // Send Email
-      try {
-        await sendEmail({
-          to: user.email,
-          subject: 'New Verification Code - Daladala Smart',
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #2c5530;">New Verification Code</h2>
-              <p>You requested a new verification code for your Daladala Smart account.</p>
-              
-              <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
-                <h3 style="color: #2c5530; margin: 0;">Your New Verification Code</h3>
-                <h1 style="color: #007bff; font-size: 32px; letter-spacing: 5px; margin: 10px 0;">${newCode}</h1>
-                <p style="color: #6c757d; margin: 0;">This code expires in 10 minutes</p>
-              </div>
-              
-              <p>If you didn't request this, please ignore this email.</p>
+    // Send Email
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: 'New Verification Code - Daladala Smart',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #2c5530;">New Verification Code</h2>
+            <p>You requested a new verification code for your Daladala Smart account.</p>
+            
+            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+              <h3 style="color: #2c5530; margin: 0;">Your New Verification Code</h3>
+              <h1 style="color: #007bff; font-size: 32px; letter-spacing: 5px; margin: 10px 0;">${newCode}</h1>
+              <p style="color: #6c757d; margin: 0;">Code expires in 10 minutes</p>
             </div>
-          `
-        });
-      } catch (emailError) {
-        console.error('Email resend failed:', emailError);
-        return res.status(500).json({
-          status: 'error',
-          message: 'Failed to send email. Please try again.'
-        });
-      }
+            
+            <p>If you didn't request this, please ignore this email.</p>
+          </div>
+        `
+      });
+    } catch (emailError) {
+      console.error('Email resend failed:', emailError);
     }
 
     res.status(200).json({
       status: 'success',
-      message: `New verification code sent to your ${type}`
+      message: 'New verification code sent to both your phone and email'
     });
 
   } catch (error) {
@@ -349,7 +307,6 @@ exports.resendVerificationCode = async (req, res) => {
   }
 };
 
-// Login user (updated to check verification)
 exports.login = async (req, res) => {
   try {
     const user = await User.findOne({
@@ -381,13 +338,14 @@ exports.login = async (req, res) => {
 
     // Check if user is verified
     if (!user.is_verified) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Account not verified. Please verify your phone and email first.',
+      return res.status(200).json({
+        status: 'success',
+        message: 'Account not verified. Please verify your account first.',
         data: {
-          phone_verified: user.phone_verified,
-          email_verified: user.email_verified,
-          requires_verification: true
+          requires_verification: true,
+          user_id: user.user_id,
+          phone: user.phone,
+          email: user.email
         }
       });
     }
@@ -419,8 +377,7 @@ exports.login = async (req, res) => {
         email: user.email,
         role: user.role.role_name,
         profile_picture: user.profile_picture,
-        phone_verified: user.phone_verified,
-        email_verified: user.email_verified,
+        is_verified: user.is_verified,
         accessToken: token
       }
     });
@@ -430,7 +387,7 @@ exports.login = async (req, res) => {
       status: 'error',
       message: error.message
     });
-  }  
+  }
 };
 
 // Request password reset

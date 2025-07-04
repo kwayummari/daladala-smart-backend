@@ -5,23 +5,16 @@ const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const { validate, simplifiedUserValidationRules, loginValidationRules, verificationValidationRules } = require('../middlewares/validation.middleware');
 
-// Simplified registration - only phone, email, password
 router.post('/register', simplifiedUserValidationRules(), validate, authController.register);
-
-// Login user (allows phone or email)
 router.post('/login', loginValidationRules(), validate, authController.login);
 
-// Verify phone number - use the working validation function
-router.post('/verify-phone', verificationValidationRules('phone'), validate, authController.verifyPhone);
+router.post('/verify', [
+    body('identifier').notEmpty().withMessage('Phone or email is required'),
+    body('code').isLength({ min: 6, max: 6 }).withMessage('Code must be 6 digits')
+], validate, authController.verifyAccount);
 
-// Verify email address - use the working validation function  
-router.post('/verify-email', verificationValidationRules('email'), validate, authController.verifyEmail);
-
-// Resend verification code
-router.post('/resend-verification', [
-    body('phone').optional().isMobilePhone('any', { strictMode: false }).withMessage('Invalid phone number'),
-    body('email').optional().isEmail().withMessage('Invalid email address'),
-    body('type').isIn(['phone', 'email']).withMessage('Type must be either phone or email')
+router.post('/resend-code', [
+    body('identifier').notEmpty().withMessage('Phone or email is required')
 ], validate, authController.resendVerificationCode);
 
 // Request password reset

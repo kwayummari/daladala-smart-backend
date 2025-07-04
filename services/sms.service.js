@@ -6,16 +6,17 @@ class SMSService {
         this.apiUrl = 'https://messaging-service.co.tz/api/sms/v1/text/single';
         this.username = process.env.NEXTSMS_USERNAME; // Your NextSMS username
         this.password = process.env.NEXTSMS_PASSWORD; // Your NextSMS password
-        this.from = process.env.NEXTSMS_FROM || 'DALADASMART'; // Your sender name
+        this.from = process.env.NEXTSMS_FROM || 'DALADALA SMART';
+        this.authHeader = 'Basic TmplbHUwMTpOamVsdUAyMDIw'; 
     }
 
     /**
-     * Send SMS using NextSMS API
-     * @param {Object} params
-     * @param {string} params.phone - Phone number (format: 255xxxxxxxxx)
-     * @param {string} params.message - SMS message content
-     * @returns {Promise<Object>} SMS sending result
-     */
+   * Send SMS using NextSMS API
+   * @param {Object} params
+   * @param {string} params.phone - Phone number (format: 255xxxxxxxxx)
+   * @param {string} params.message - SMS message content
+   * @returns {Promise<Object>} SMS sending result
+   */
     async sendSMS({ phone, message }) {
         try {
             // Format phone number for NextSMS (remove + and ensure 255 prefix)
@@ -24,52 +25,45 @@ class SMSService {
             const requestData = {
                 from: this.from,
                 to: formattedPhone,
-                text: message
+                text: message,
+                reference: this.generateReference() // Add reference like in curl
             };
 
-            console.log('Sending SMS:', {
+            console.log('🚀 Sending SMS:', {
                 to: formattedPhone,
                 from: this.from,
-                message: message.substring(0, 50) + '...'
+                message: message.substring(0, 50) + '...',
+                url: this.apiUrl
             });
 
             const response = await axios.post(this.apiUrl, requestData, {
-                auth: {
-                    username: this.username,
-                    password: this.password
-                },
                 headers: {
+                    'Authorization': this.authHeader, // Use the same auth as curl
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
                 timeout: 30000 // 30 seconds timeout
             });
 
-            if (response.data && response.data.messages) {
-                const messageResult = response.data.messages[0];
+            console.log('📱 SMS API Response:', response.data);
 
-                if (messageResult.status === 'PENDING' || messageResult.status === 'SENT') {
-                    console.log('SMS sent successfully:', {
-                        messageId: messageResult.messageId,
-                        status: messageResult.status,
-                        to: formattedPhone
-                    });
+            if (response.data && response.status === 200) {
+                console.log('✅ SMS sent successfully:', response,{
+                    response: response.data,
+                    to: formattedPhone
+                });
 
-                    return {
-                        success: true,
-                        messageId: messageResult.messageId,
-                        status: messageResult.status,
-                        phone: formattedPhone
-                    };
-                } else {
-                    throw new Error(`SMS failed with status: ${messageResult.status}`);
-                }
+                return {
+                    success: true,
+                    data: response.data,
+                    phone: formattedPhone
+                };
             } else {
-                throw new Error('Invalid response from SMS service');
+                throw new Error(`SMS failed with response: ${JSON.stringify(response.data)}`);
             }
 
         } catch (error) {
-            console.error('SMS sending error:', {
+            console.error('❌ SMS sending error:', {
                 message: error.message,
                 response: error.response?.data,
                 status: error.response?.status
@@ -79,16 +73,18 @@ class SMSService {
             return {
                 success: false,
                 error: error.message,
-                details: error.response?.data
+                details: error.response?.data,
+                statusCode: error.response?.status
             };
         }
     }
 
+
     /**
-     * Format phone number for NextSMS
-     * @param {string} phone - Input phone number
-     * @returns {string} Formatted phone number
-     */
+   * Format phone number for NextSMS
+   * @param {string} phone - Input phone number
+   * @returns {string} Formatted phone number
+   */
     formatPhoneNumber(phone) {
         // Remove any spaces, dashes, or plus signs
         let cleaned = phone.replace(/[\s\-\+]/g, '');
@@ -107,16 +103,60 @@ class SMSService {
     }
 
     /**
+     * Generate a unique reference for SMS tracking
+     * @returns {string} Unique reference
+     */
+    generateReference() {
+        return `DALA_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    }
+
+    /**
      * Send verification code SMS
      * @param {string} phone - Phone number
      * @param {string} code - Verification code
      * @returns {Promise<Object>} SMS result
      */
     async sendVerificationCode(phone, code) {
-        const message = `Your Daladala Smart verification code is: ${code}. Valid for 10 minutes. Do not share this code with anyone.`;
+        const message = `${code} is your Daladala Smart verification code. Valid for 10 minutes. Do not share this code with anyone.`;
 
         return await this.sendSMS({ phone, message });
     }
+
+    /**
+     * Test SMS sending with your exact curl parameters
+     */
+    async testSMS() {
+        const testData = {
+            from: "N-SMS",
+            to: "255716718040", // Your test number
+            text: "Test message from Daladala Smart API",
+            reference: "test_" + Date.now()
+        };
+
+        try {
+            console.log('🧪 Testing SMS with curl parameters...');
+
+            const response = await axios.post(this.apiUrl, testData, {
+                headers: {
+                    'Authorization': this.authHeader,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            });
+
+            console.log('✅ Test SMS Response:', response.data);
+            return response.data;
+
+        } catch (error) {
+            console.error('❌ Test SMS Failed:', {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status
+            });
+            return null;
+        }
+    }
+
 
     /**
      * Send trip booking confirmation SMS
@@ -193,5 +233,6 @@ module.exports = {
     sendVerificationCode: (phone, code) => smsService.sendVerificationCode(phone, code),
     sendBookingConfirmation: (params) => smsService.sendBookingConfirmation(params),
     sendTripReminder: (params) => smsService.sendTripReminder(params),
-    checkDeliveryStatus: (messageId) => smsService.checkDeliveryStatus(messageId)
+    checkDeliveryStatus: (messageId) => smsService.checkDeliveryStatus(messageId),
+    testSMS: () => smsService.testSMS()
 };

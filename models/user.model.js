@@ -59,6 +59,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DATE,
         allowNull: true
       },
+      verification_code: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      verification_code_expires: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
       status: {
         type: DataTypes.ENUM('active', 'inactive', 'suspended', 'deleted'),
         allowNull: false,
