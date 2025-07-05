@@ -2,81 +2,106 @@
 const axios = require('axios');
 
 class SMSService {
+
     constructor() {
-        this.apiUrl = 'https://messaging-service.co.tz/api/sms/v1/text/single';
-        this.username = process.env.NEXTSMS_USERNAME; // Your NextSMS username
-        this.password = process.env.NEXTSMS_PASSWORD; // Your NextSMS password
-        this.from = process.env.NEXTSMS_FROM || 'DALADALA SMART';
-        this.authHeader = 'Basic TmplbHUwMTpOamVsdUAyMDIw'; 
+        this.apiUrl = process.env.NEXT_SMS_API_URL;
+        this.authorization = process.env.NEXT_SMS_AUTHORIZATION;
+        this.senderId = process.env.NEXT_SMS_SENDER_ID;
     }
 
+   /**
+        * Send SMS using NextSMS API (matching your working implementation)
+        * @param {Object} params
+        * @param {string} params.phone - Phone number
+        * @param {string} params.message - SMS message content
+        * @param {string} params.reference - Optional reference
+        * @returns {Promise<Object>} SMS sending result
+        */
+       async sendSMS({ phone, message, reference }) {
+           try {
+               // Format phone number
+               const formattedPhone = this.formatPhoneNumber(phone);
+   
+               // Use reference or generate one
+               const smsReference = reference || `DALA_${Date.now()}`;
+   
+               const data = JSON.stringify({
+                   from: this.senderId,
+                   to: [formattedPhone],
+                   text: message,
+                   reference: smsReference,
+               });
+   
+               const config = {
+                   method: "post",
+                   url: this.apiUrl,
+                   headers: {
+                       Authorization: this.authorization,
+                       "Content-Type": "application/json",
+                       Accept: "application/json",
+                   },
+                   data: data,
+               };
+   
+               console.log('🚀 Sending SMS:', {
+                   to: formattedPhone,
+                   from: this.senderId,
+                   message: message.substring(0, 50) + '...',
+                   reference: smsReference
+               });
+   
+               // Send the request to NextSMS API
+               const response = await axios(config);
+   
+               if (response.status === 200) {
+                   console.log("SMS sent successfully:", response.data);
+                   return {
+                       success: true,
+                       data: response.data,
+                       phone: formattedPhone,
+                       reference: smsReference
+                   };
+               } else {
+                   console.log("Failed to send SMS:", response.status, response.data);
+                   throw new Error(`Failed to send SMS: ${response.status}`);
+               }
+   
+           } catch (error) {
+               console.error('SMS sending error:', {
+                   message: error.message,
+                   response: error.response?.data,
+                   status: error.response?.status
+               });
+   
+               return {
+                   success: false,
+                   error: error.message,
+                   details: error.response?.data,
+                   statusCode: error.response?.status
+               };
+           }
+       }
+    
     /**
-   * Send SMS using NextSMS API
-   * @param {Object} params
-   * @param {string} params.phone - Phone number (format: 255xxxxxxxxx)
-   * @param {string} params.message - SMS message content
-   * @returns {Promise<Object>} SMS sending result
-   */
-    async sendSMS({ phone, message }) {
-        try {
-            // Format phone number for NextSMS (remove + and ensure 255 prefix)
-            const formattedPhone = this.formatPhoneNumber(phone);
+     * Format phone number for NextSMS
+     * @param {string} phone - Input phone number
+     * @returns {string} Formatted phone number
+     */
+    formatPhoneNumber(phone) {
+        // Remove any spaces, dashes, or plus signs
+        let cleaned = phone.replace(/[\s\-\+]/g, '');
 
-            const requestData = {
-                from: this.from,
-                to: formattedPhone,
-                text: message,
-                reference: this.generateReference() // Add reference like in curl
-            };
-
-            console.log('🚀 Sending SMS:', {
-                to: formattedPhone,
-                from: this.from,
-                message: message.substring(0, 50) + '...',
-                url: this.apiUrl
-            });
-
-            const response = await axios.post(this.apiUrl, requestData, {
-                headers: {
-                    'Authorization': this.authHeader, // Use the same auth as curl
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                timeout: 30000 // 30 seconds timeout
-            });
-
-            console.log('SMS API Response:', response.data);
-
-            if (response.data && response.status === 200) {
-                console.log('SMS sent successfully:', response,{
-                    response: response.data,
-                    to: formattedPhone
-                });
-
-                return {
-                    success: true,
-                    data: response.data,
-                    phone: formattedPhone
-                };
-            } else {
-                throw new Error(`SMS failed with response: ${JSON.stringify(response.data)}`);
-            }
-
-        } catch (error) {
-            console.error('SMS sending error:', {
-                message: error.message,
-                response: error.response?.data,
-                status: error.response?.status
-            });
-
-            // Return error details for debugging
-            return {
-                success: false,
-                error: error.message,
-                details: error.response?.data,
-                statusCode: error.response?.status
-            };
+        // If starts with 0, replace with 255
+        if (cleaned.startsWith('0')) {
+            cleaned = '255' + cleaned.substring(1);
         }
+
+        // If doesn't start with 255, add it
+        if (!cleaned.startsWith('255')) {
+            cleaned = '255' + cleaned;
+        }
+
+        return cleaned;
     }
 
 
@@ -119,7 +144,11 @@ class SMSService {
     async sendVerificationCode(phone, code) {
         const message = `${code} is your Daladala Smart verification code. Valid for 10 minutes. Do not share this code with anyone.`;
 
-        return await this.sendSMS({ phone, message });
+        return await this.sendSMS({
+            phone,
+            message,
+            reference: code
+        });
     }
 
     /**
