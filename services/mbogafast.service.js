@@ -9,7 +9,7 @@ class SMSService {
         this.authorization = process.env.NEXT_SMS_AUTHORIZATION;
         this.senderId = process.env.NEXT_SMS_SENDER_ID;
 
-        console.log('🔧 SMS Service initialized with:', {
+        console.log('SMS Service initialized with:', {
             apiUrl: this.apiUrl,
             senderId: this.senderId,
             hasAuth: !!this.authorization

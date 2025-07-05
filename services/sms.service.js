@@ -45,10 +45,10 @@ class SMSService {
                 timeout: 30000 // 30 seconds timeout
             });
 
-            console.log('📱 SMS API Response:', response.data);
+            console.log('SMS API Response:', response.data);
 
             if (response.data && response.status === 200) {
-                console.log('✅ SMS sent successfully:', response,{
+                console.log('SMS sent successfully:', response,{
                     response: response.data,
                     to: formattedPhone
                 });
@@ -63,7 +63,7 @@ class SMSService {
             }
 
         } catch (error) {
-            console.error('❌ SMS sending error:', {
+            console.error('SMS sending error:', {
                 message: error.message,
                 response: error.response?.data,
                 status: error.response?.status
@@ -144,11 +144,11 @@ class SMSService {
                 }
             });
 
-            console.log('✅ Test SMS Response:', response.data);
+            console.log('Test SMS Response:', response.data);
             return response.data;
 
         } catch (error) {
-            console.error('❌ Test SMS Failed:', {
+            console.error('Test SMS Failed:', {
                 message: error.message,
                 response: error.response?.data,
                 status: error.response?.status
