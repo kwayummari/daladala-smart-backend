@@ -3,34 +3,81 @@ const db = require('../models');
 const Payment = db.Payment;
 const Booking = db.Booking;
 const User = db.User;
+const Wallet = db.Wallet;
+const WalletTransaction = db.WalletTransaction;
 const Notification = db.Notification;
 const zenoPayService = require('../services/zenoPayService');
+
+// Helper function to get wallet balance
+async function getWalletBalance(userId) {
+  const wallet = await Wallet.findOne({ where: { user_id: userId } });
+  return wallet ? parseFloat(wallet.balance) : 0;
+}
+
+// Helper function to deduct from wallet
+async function deductFromWallet(userId, amount, bookingId) {
+  const transaction = await db.sequelize.transaction();
+  try {
+    const wallet = await Wallet.findOne({
+      where: { user_id: userId }
+    }, { transaction });
+
+    if (!wallet || parseFloat(wallet.balance) < amount) {
+      await transaction.rollback();
+      return false;
+    }
+
+    const balanceBefore = parseFloat(wallet.balance);
+    const balanceAfter = balanceBefore - amount;
+
+    // Update wallet balance
+    await wallet.update({
+      balance: balanceAfter,
+      last_activity: new Date()
+    }, { transaction });
+
+    // Create wallet transaction record
+    await WalletTransaction.create({
+      wallet_id: wallet.wallet_id,
+      user_id: userId,
+      type: 'payment',
+      amount: amount,
+      balance_before: balanceBefore,
+      balance_after: balanceAfter,
+      reference_type: 'booking',
+      reference_id: bookingId,
+      description: `Payment for booking #${bookingId}`,
+      status: 'completed'
+    }, { transaction });
+
+    await transaction.commit();
+    return true;
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
 
 // Process payment
 exports.processPayment = async (req, res) => {
   try {
-    console.log('Request body:', req.body);
     const { booking_id, payment_method, phone_number } = req.body;
-    const amount = req.body.payment_details?.amount; // Use optional chaining
 
     // Validate required fields
     if (!booking_id || !payment_method) {
       return res.status(400).json({
         status: 'error',
         message: 'Booking ID and payment method are required',
-        received: { booking_id, payment_method } // Debug info
+        received: { booking_id, payment_method }
       });
     }
 
     // Convert booking_id to proper format if needed
-    const bookingIdToSearch = parseInt(booking_id); // Ensure it's a number
-
-    console.log('Searching for booking with ID:', bookingIdToSearch);
-
+    const bookingIdToSearch = parseInt(booking_id);
     // Check if booking exists and belongs to user
     const booking = await Booking.findOne({
       where: {
-        booking_id: bookingIdToSearch, // Use converted ID
+        booking_id: bookingIdToSearch,
         user_id: req.userId
       },
       include: [{
@@ -42,12 +89,10 @@ exports.processPayment = async (req, res) => {
       }]
     });
 
-    console.log('Found booking:', booking ? 'Yes' : 'No');
-
     if (!booking) {
       return res.status(404).json({
         status: 'error',
-        message: 'Booking not found',
+        message: 'Booking not found or does not belong to user',
         debug: {
           searched_booking_id: bookingIdToSearch,
           user_id: req.userId
@@ -63,7 +108,7 @@ exports.processPayment = async (req, res) => {
       });
     }
 
-    // Check if payment already exists
+    // Check if payment already exists and is completed
     const existingPayment = await Payment.findOne({
       where: { booking_id: bookingIdToSearch }
     });
@@ -112,8 +157,6 @@ exports.processPayment = async (req, res) => {
         amount: booking.fare_amount
       };
 
-      console.log('Processing ZenoPay payment:', zenoPaymentData);
-
       paymentResult = await zenoPayService.processMobileMoneyPayment(zenoPaymentData);
 
       if (!paymentResult.success) {
@@ -135,8 +178,30 @@ exports.processPayment = async (req, res) => {
       };
       paymentData.status = 'pending'; // Payment initiated, waiting for completion
 
+    } else if (payment_method === 'wallet') {
+      const walletBalance = await getWalletBalance(req.userId);
+      if (walletBalance < booking.fare_amount) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Insufficient wallet balance'
+        });
+      }
+
+      // Deduct from wallet and mark as completed
+      const deductionSuccess = await deductFromWallet(req.userId, booking.fare_amount, bookingIdToSearch);
+      console.log(deductionSuccess);
+      if (!deductionSuccess) {
+        return res.status(500).json({
+          status: 'error',
+          message: 'Failed to deduct from wallet'
+        });
+      }
+
+      paymentData.status = 'completed';
+      paymentData.payment_time = new Date();
+      paymentData.transaction_id = `WALLET_${Date.now()}`;
     } else {
-      // For other payment methods (cash, card, wallet)
+      // For other payment methods (cash, card)
       paymentData.status = payment_method === 'cash' ? 'completed' : 'pending';
       paymentData.payment_time = new Date();
     }
@@ -175,8 +240,10 @@ exports.processPayment = async (req, res) => {
       currency: payment.currency,
       payment_method: payment.payment_method,
       status: payment.status,
-      payment_time: payment.payment_time
+      payment_time: payment.payment_time,
+      user_id: req.userId
     };
+
 
     // Add ZenoPay specific data for mobile money
     if (payment_method === 'mobile_money' && paymentResult) {
@@ -184,6 +251,7 @@ exports.processPayment = async (req, res) => {
         order_id: paymentResult.data.orderId,
         reference: paymentResult.data.reference,
         message: paymentResult.data.message,
+        user_id: req.userId,
         instructions: 'Please complete the payment on your mobile phone using the USSD prompt or mobile app.'
       };
     }
@@ -197,15 +265,13 @@ exports.processPayment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Payment processing error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Internal server error while processing payment',
-      error: error.message // Add error details for debugging
+      error: error.message
     });
   }
 };
-
 // ZenoPay webhook handler
 // controllers/payment.controller.js - Enhanced but clean webhook handler
 
@@ -216,11 +282,8 @@ exports.handleZenoPayWebhook = async (req, res) => {
 
     // Verify webhook authenticity
     if (!zenoPayService.verifyWebhookSignature(webhookData, apiKey)) {
-      console.error('Invalid webhook signature');
       return res.status(401).json({ message: 'Unauthorized' });
     }
-
-    console.log('ZenoPay Webhook received:', webhookData);
 
     const { order_id, payment_status, reference } = webhookData;
     const newStatus = zenoPayService.mapPaymentStatus(payment_status);
@@ -239,7 +302,6 @@ exports.handleZenoPayWebhook = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Webhook processing error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Webhook processing failed'
@@ -262,7 +324,6 @@ async function handleWalletTopup(orderId, status, webhookData) {
     });
 
     if (!walletTransaction) {
-      console.error('Wallet transaction not found for order_id:', orderId);
       return;
     }
 
@@ -323,7 +384,6 @@ async function handleWalletTopup(orderId, status, webhookData) {
 
   } catch (error) {
     await transaction.rollback();
-    console.error('Wallet top-up webhook error:', error);
     throw error;
   }
 }
@@ -343,7 +403,6 @@ async function handleBookingPayment(orderId, newStatus, webhookData, reference) 
   });
 
   if (!payment) {
-    console.error('Payment not found for order_id:', orderId);
     return;
   }
 
@@ -464,7 +523,6 @@ exports.checkPaymentStatus = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Payment status check error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Failed to check payment status'
@@ -509,7 +567,6 @@ exports.getPaymentHistory = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Payment history error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch payment history'
@@ -564,10 +621,11 @@ exports.getPaymentDetails = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Payment details error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch payment details'
     });
   }
-};
+
+  // Then in your wallet payment section, use:
+}

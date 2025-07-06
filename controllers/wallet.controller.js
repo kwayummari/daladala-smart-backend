@@ -10,7 +10,6 @@ exports.getWalletBalance = async (req, res) => {
             where: { user_id: req.userId }
         });
 
-        // 🔥 FIX: Auto-create wallet if doesn't exist
         if (!wallet) {
             wallet = await Wallet.create({
                 user_id: req.userId,
@@ -37,7 +36,6 @@ exports.getWalletBalance = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Get wallet balance error:', error);
         res.status(500).json({
             status: 'error',
             message: 'Failed to fetch wallet balance'
@@ -201,7 +199,6 @@ exports.topUpWallet = async (req, res) => {
 
     } catch (error) {
         await transaction.rollback();
-        console.error('Wallet top-up error:', error);
         res.status(500).json({
             status: 'error',
             message: 'Failed to process wallet top-up'
@@ -345,7 +342,6 @@ exports.processWalletPayment = async (req, res) => {
 
     } catch (error) {
         await transaction.rollback();
-        console.error('Wallet payment error:', error);
         res.status(500).json({
             status: 'error',
             message: 'Failed to process wallet payment'
@@ -402,7 +398,6 @@ exports.getWalletTransactions = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Get wallet transactions error:', error);
         res.status(500).json({
             status: 'error',
             message: 'Failed to fetch wallet transactions'

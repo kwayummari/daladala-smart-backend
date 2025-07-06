@@ -8,12 +8,10 @@ const User = db.User;
 const Notification = db.Notification;
 const { Sequelize, Op } = require('sequelize');
 
-// Create booking
 exports.createBooking = async (req, res) => {
   try {
     const { trip_id, pickup_stop_id, dropoff_stop_id, passenger_count = 1 } = req.body;
 
-    // Validate required fields
     if (!trip_id || !pickup_stop_id || !dropoff_stop_id) {
       return res.status(400).json({
         status: 'error',
@@ -21,7 +19,6 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    // Check if trip exists and is available
     const trip = await Trip.findOne({
       where: {
         trip_id,
@@ -35,6 +32,7 @@ exports.createBooking = async (req, res) => {
       }]
     });
 
+
     if (!trip) {
       return res.status(404).json({
         status: 'error',
@@ -42,7 +40,6 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    // Get fare amount
     const fare = await Fare.findOne({
       where: {
         route_id: trip.Route.route_id,
@@ -53,6 +50,7 @@ exports.createBooking = async (req, res) => {
       }
     });
 
+
     if (!fare) {
       return res.status(404).json({
         status: 'error',
@@ -60,10 +58,8 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    // Calculate total fare
     const fareAmount = fare.amount * passenger_count;
 
-    // Create booking
     const booking = await Booking.create({
       user_id: req.userId,
       trip_id,
@@ -76,7 +72,6 @@ exports.createBooking = async (req, res) => {
       payment_status: 'pending'
     });
 
-    // Create notification for user
     await Notification.create({
       user_id: req.userId,
       title: 'Booking Confirmation',
@@ -91,11 +86,17 @@ exports.createBooking = async (req, res) => {
       message: 'Booking created successfully',
       data: {
         booking_id: booking.booking_id,
+        user_id: booking.user_id, 
         trip_id: booking.trip_id,
+        pickup_stop_id: booking.pickup_stop_id,
+        dropoff_stop_id: booking.dropoff_stop_id,
+        booking_time: booking.booking_time,
         fare_amount: booking.fare_amount,
         passenger_count: booking.passenger_count,
         status: booking.status,
         payment_status: booking.payment_status,
+        created_at: booking.created_at, 
+        updated_at: booking.updated_at,
         route_info: {
           route_name: trip.Route.route_name,
           start_point: trip.Route.start_point,
@@ -104,7 +105,6 @@ exports.createBooking = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Create booking error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Failed to create booking'
@@ -155,7 +155,6 @@ exports.getUserBookings = async (req, res) => {
       data: bookings
     });
   } catch (error) {
-    console.error('Get user bookings error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch user bookings'
@@ -238,7 +237,6 @@ exports.getBookingDetails = async (req, res) => {
         attributes: ['payment_id', 'amount', 'currency', 'payment_method', 'status', 'payment_time', 'transaction_id']
       });
     } catch (paymentError) {
-      console.warn('Could not fetch payment details:', paymentError.message);
     }
 
     res.status(200).json({
@@ -249,7 +247,6 @@ exports.getBookingDetails = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get booking details error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch booking details'

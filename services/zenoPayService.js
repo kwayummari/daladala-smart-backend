@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 class ZenoPayService {
     constructor() {
         this.apiUrl = 'https://zenoapi.com/api/payments';
-        this.apiKey = process.env.ZENOPAY_API_KEY;
+        this.apiKey = process.env.ZENOPAY_API_KEY ?? 'XB928pO2vf1logEwEaJSTsYeBr4LhuX9HxffvoUZA64umcHZljS3iRNARKSbPkpLVk4WjNlx9GGy8mgT4TjabQ';
         this.webhookUrl = process.env.ZENOPAY_WEBHOOK_URL || `${process.env.APP_URL}/api/payments/webhook/zenopay`;
     }
 
@@ -30,8 +30,6 @@ class ZenoPayService {
                 webhook_url: this.webhookUrl
             };
 
-            console.log('ZenoPay Request:', requestPayload);
-
             const response = await axios.post(
                 `${this.apiUrl}/mobile_money_tanzania`,
                 requestPayload,
@@ -43,8 +41,6 @@ class ZenoPayService {
                     timeout: 30000 // 30 seconds timeout
                 }
             );
-
-            console.log('ZenoPay Response:', response.data);
 
             return {
                 success: true,
@@ -61,8 +57,6 @@ class ZenoPayService {
             };
 
         } catch (error) {
-            console.error('ZenoPay Error:', error.response?.data || error.message);
-
             return {
                 success: false,
                 error: {
@@ -107,8 +101,6 @@ class ZenoPayService {
             };
 
         } catch (error) {
-            console.error('ZenoPay Status Check Error:', error.response?.data || error.message);
-
             return {
                 success: false,
                 error: {
