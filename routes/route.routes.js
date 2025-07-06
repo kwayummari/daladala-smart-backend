@@ -4,6 +4,12 @@ const routeController = require('../controllers/route.controller');
 const { verifyToken, isAdmin } = require('../middlewares/auth.middleware');
 
 // Public routes (no authentication required)
+// IMPORTANT: Put search route BEFORE the /:id route to avoid conflicts
+router.get('/search', routeController.searchRoutes);
+
+// Get fare between stops - also needs to be before /:id
+router.get('/fare', routeController.getFareBetweenStops);
+
 // Get all routes
 router.get('/', routeController.getAllRoutes);
 
@@ -15,12 +21,6 @@ router.get('/:id/stops', routeController.getRouteStops);
 
 // Get route fares
 router.get('/:id/fares', routeController.getRouteFares);
-
-// Search routes
-router.get('/search', routeController.searchRoutes);
-
-// Get fare between stops
-router.get('/fare', routeController.getFareBetweenStops);
 
 // Admin routes (authentication and admin role required)
 // The following routes would typically be used in the CMS

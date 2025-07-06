@@ -1,4 +1,4 @@
-// Updated models/index.js - Add wallet models and relationships
+// Updated models/index.js - Fix RouteStop associations
 const sequelize = require('../config/db.config');
 const { DataTypes } = require('sequelize');
 
@@ -34,8 +34,15 @@ Driver.belongsTo(User, { foreignKey: 'user_id' });
 Driver.hasMany(Vehicle, { foreignKey: 'driver_id' });
 Vehicle.belongsTo(Driver, { foreignKey: 'driver_id' });
 
+// FIXED: Many-to-many relationship between Routes and Stops through RouteStop
 Route.belongsToMany(Stop, { through: RouteStop, foreignKey: 'route_id' });
 Stop.belongsToMany(Route, { through: RouteStop, foreignKey: 'stop_id' });
+
+// ADDED: Direct associations for RouteStop to enable include queries
+RouteStop.belongsTo(Route, { foreignKey: 'route_id' });
+RouteStop.belongsTo(Stop, { foreignKey: 'stop_id' });
+Route.hasMany(RouteStop, { foreignKey: 'route_id' });
+Stop.hasMany(RouteStop, { foreignKey: 'stop_id' });
 
 Trip.belongsTo(Route, { foreignKey: 'route_id' });
 Trip.belongsTo(Vehicle, { foreignKey: 'vehicle_id' });

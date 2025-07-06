@@ -9,20 +9,28 @@ const zenoPayService = require('../services/zenoPayService');
 // Process payment
 exports.processPayment = async (req, res) => {
   try {
+    console.log('Request body:', req.body);
     const { booking_id, payment_method, phone_number } = req.body;
+    const amount = req.body.payment_details?.amount; // Use optional chaining
 
     // Validate required fields
     if (!booking_id || !payment_method) {
       return res.status(400).json({
         status: 'error',
-        message: 'Booking ID and payment method are required'
+        message: 'Booking ID and payment method are required',
+        received: { booking_id, payment_method } // Debug info
       });
     }
+
+    // Convert booking_id to proper format if needed
+    const bookingIdToSearch = parseInt(booking_id); // Ensure it's a number
+
+    console.log('Searching for booking with ID:', bookingIdToSearch);
 
     // Check if booking exists and belongs to user
     const booking = await Booking.findOne({
       where: {
-        booking_id,
+        booking_id: bookingIdToSearch, // Use converted ID
         user_id: req.userId
       },
       include: [{
@@ -34,10 +42,16 @@ exports.processPayment = async (req, res) => {
       }]
     });
 
+    console.log('Found booking:', booking ? 'Yes' : 'No');
+
     if (!booking) {
       return res.status(404).json({
         status: 'error',
-        message: 'Booking not found'
+        message: 'Booking not found',
+        debug: {
+          searched_booking_id: bookingIdToSearch,
+          user_id: req.userId
+        }
       });
     }
 
@@ -51,7 +65,7 @@ exports.processPayment = async (req, res) => {
 
     // Check if payment already exists
     const existingPayment = await Payment.findOne({
-      where: { booking_id }
+      where: { booking_id: bookingIdToSearch }
     });
 
     if (existingPayment && existingPayment.status === 'completed') {
@@ -72,7 +86,7 @@ exports.processPayment = async (req, res) => {
 
     let paymentResult;
     let paymentData = {
-      booking_id,
+      booking_id: bookingIdToSearch,
       user_id: req.userId,
       amount: booking.fare_amount,
       currency: 'TZS',
@@ -91,12 +105,14 @@ exports.processPayment = async (req, res) => {
 
       // Process mobile money payment via ZenoPay
       const zenoPaymentData = {
-        bookingId: booking_id,
+        bookingId: bookingIdToSearch,
         userEmail: user.email,
         userName: `${user.first_name} ${user.last_name}`,
         userPhone: phone_number,
         amount: booking.fare_amount
       };
+
+      console.log('Processing ZenoPay payment:', zenoPaymentData);
 
       paymentResult = await zenoPayService.processMobileMoneyPayment(zenoPaymentData);
 
@@ -144,7 +160,7 @@ exports.processPayment = async (req, res) => {
       await Notification.create({
         user_id: req.userId,
         title: 'Payment Confirmation',
-        message: `Your payment of ${booking.fare_amount} TZS for booking #${booking_id} has been confirmed.`,
+        message: `Your payment of ${booking.fare_amount} TZS for booking #${bookingIdToSearch} has been confirmed.`,
         type: 'success',
         related_entity: 'payment',
         related_id: payment.payment_id
@@ -184,7 +200,8 @@ exports.processPayment = async (req, res) => {
     console.error('Payment processing error:', error);
     res.status(500).json({
       status: 'error',
-      message: 'Internal server error while processing payment'
+      message: 'Internal server error while processing payment',
+      error: error.message // Add error details for debugging
     });
   }
 };
