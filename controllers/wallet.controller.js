@@ -10,32 +10,41 @@ exports.getWalletBalance = async (req, res) => {
             where: { user_id: req.userId }
         });
 
-        // Create wallet if it doesn't exist
+        // 🔥 FIX: Auto-create wallet if doesn't exist
         if (!wallet) {
             wallet = await Wallet.create({
                 user_id: req.userId,
-                balance: 0.00
+                balance: 0.00,
+                currency: 'TZS',
+                status: 'active'
             });
         }
 
+        // 🔥 FIX: Ensure proper response format
         res.status(200).json({
             status: 'success',
             data: {
-                balance: parseFloat(wallet.balance),
-                currency: wallet.currency,
+                wallet_id: wallet.wallet_id,
+                user_id: wallet.user_id,
+                balance: parseFloat(wallet.balance) || 0.0,  // ✅ Ensure number format
+                currency: wallet.currency || 'TZS',
                 status: wallet.status,
-                daily_limit: parseFloat(wallet.daily_limit),
-                monthly_limit: parseFloat(wallet.monthly_limit)
+                daily_limit: parseFloat(wallet.daily_limit) || 1000000.0,
+                monthly_limit: parseFloat(wallet.monthly_limit) || 5000000.0,
+                created_at: wallet.created_at,
+                updated_at: wallet.updated_at,
+                last_activity: wallet.last_activity
             }
         });
     } catch (error) {
         console.error('Get wallet balance error:', error);
         res.status(500).json({
             status: 'error',
-            message: 'Failed to get wallet balance'
+            message: 'Failed to fetch wallet balance'
         });
     }
 };
+  
 
 // Top up wallet
 exports.topUpWallet = async (req, res) => {
@@ -338,45 +347,56 @@ exports.processWalletPayment = async (req, res) => {
 // Get wallet transactions
 exports.getWalletTransactions = async (req, res) => {
     try {
-        const { page = 1, limit = 20, type } = req.query;
-        const offset = (page - 1) * limit;
+        const wallet = await Wallet.findOne({
+            where: { user_id: req.userId }
+        });
 
-        const whereClause = { user_id: req.userId };
-        if (type) {
-            whereClause.type = type;
+        if (!wallet) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Wallet not found'
+            });
         }
 
-        const transactions = await WalletTransaction.findAndCountAll({
-            where: whereClause,
+        const transactions = await WalletTransaction.findAll({
+            where: { wallet_id: wallet.wallet_id },
             order: [['created_at', 'DESC']],
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-            include: [
-                {
-                    model: Wallet,
-                    attributes: ['currency']
-                }
-            ]
+            limit: 50 // Limit to recent 50 transactions
         });
+
+        // 🔥 FIX: Format transaction response properly
+        const formattedTransactions = transactions.map(transaction => ({
+            transaction_id: transaction.transaction_id,
+            wallet_id: transaction.wallet_id,
+            user_id: transaction.user_id,
+            type: transaction.type,
+            amount: parseFloat(transaction.amount) || 0.0,
+            balance_before: parseFloat(transaction.balance_before) || 0.0,
+            balance_after: parseFloat(transaction.balance_after) || 0.0,
+            reference_type: transaction.reference_type,
+            reference_id: transaction.reference_id,
+            description: transaction.description,
+            status: transaction.status,
+            created_at: transaction.created_at,
+            updated_at: transaction.updated_at
+        }));
 
         res.status(200).json({
             status: 'success',
             data: {
-                transactions: transactions.rows,
-                pagination: {
-                    total: transactions.count,
-                    page: parseInt(page),
-                    limit: parseInt(limit),
-                    totalPages: Math.ceil(transactions.count / limit)
-                }
+                wallet: {
+                    wallet_id: wallet.wallet_id,
+                    balance: parseFloat(wallet.balance) || 0.0,
+                    currency: wallet.currency
+                },
+                transactions: formattedTransactions
             }
         });
-
     } catch (error) {
         console.error('Get wallet transactions error:', error);
         res.status(500).json({
             status: 'error',
-            message: 'Failed to get wallet transactions'
+            message: 'Failed to fetch wallet transactions'
         });
     }
-};
+  };

@@ -37,6 +37,57 @@ const upload = multer({
   }
 });
 
+exports.getCurrentUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.userId, {
+      attributes: {
+        exclude: ['password', 'verification_token', 'reset_token', 'reset_token_expires', 'verification_code']
+      },
+      include: [{
+        model: UserRole,
+        as: 'role',
+        attributes: ['role_id', 'role_name']
+      }]
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
+      });
+    }
+
+    // Format profile picture URL if exists
+    const userData = user.toJSON();
+    if (userData.profile_picture && !userData.profile_picture.startsWith('http')) {
+      userData.profile_picture = `${process.env.APP_URL || 'http://localhost:3000'}/uploads/profiles/${userData.profile_picture}`;
+    }
+
+    // 🔥 FIX: Return user data in correct format for mobile app
+    res.status(200).json({
+      status: 'success',
+      data: {
+        id: userData.user_id,
+        first_name: userData.first_name || '',  // ✅ Include first_name
+        last_name: userData.last_name || '',    // ✅ Include last_name
+        phone: userData.phone,
+        email: userData.email,
+        profile_picture: userData.profile_picture,
+        role: userData.role.role_name,
+        is_verified: userData.is_verified,
+        created_at: userData.created_at,
+        last_login: userData.last_login
+      }
+    });
+  } catch (error) {
+    console.error('Get current user error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
+  }
+};
+
 // Get user profile
 exports.getProfile = async (req, res) => {
   try {
@@ -445,6 +496,7 @@ function isValidEmail(email) {
 
 module.exports = {
   getProfile: exports.getProfile,
+  getCurrentUser: exports.getCurrentUser,
   updateProfile: exports.updateProfile,
   uploadAvatar: exports.uploadAvatar,
   changePassword: exports.changePassword,

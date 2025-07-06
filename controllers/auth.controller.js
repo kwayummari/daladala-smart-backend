@@ -309,38 +309,41 @@ exports.resendVerificationCode = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
+    const { phone, password } = req.body;
+
+    // Validation (existing code)
+    if (!phone || !password) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Phone and password are required'
+      });
+    }
+
     const user = await User.findOne({
       where: {
         [Op.or]: [
-          { phone: req.body.phone },
-          { email: req.body.phone } // Allow login with email or phone
+          { phone: phone },
+          { email: phone }
         ]
       },
-      include: ['role']
+      include: [{
+        model: UserRole,
+        as: 'role',
+        attributes: ['role_id', 'role_name']
+      }]
     });
 
-    if (!user) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found'
-      });
-    }
-
-    // Check password
-    const passwordIsValid = await bcrypt.compare(req.body.password, user.password);
-
-    if (!passwordIsValid) {
+    if (!user || !await bcrypt.compare(password, user.password)) {
       return res.status(401).json({
         status: 'error',
-        message: 'Invalid password'
+        message: 'Invalid phone/email or password'
       });
     }
 
-    // Check if user is verified
     if (!user.is_verified) {
-      return res.status(200).json({
-        status: 'success',
-        message: 'Account not verified. Please verify your account first.',
+      return res.status(403).json({
+        status: 'error',
+        message: 'Please verify your account first.',
         data: {
           requires_verification: true,
           user_id: user.user_id,
@@ -350,7 +353,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check if user is active
     if (user.status !== 'active') {
       return res.status(403).json({
         status: 'error',
@@ -358,12 +360,10 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Generate JWT token
     const token = jwt.sign({ id: user.user_id }, config.secret, {
       expiresIn: config.jwtExpiration
     });
 
-    // Update last login
     await user.update({
       last_login: new Date()
     });
@@ -373,6 +373,8 @@ exports.login = async (req, res) => {
       message: 'Login successful',
       data: {
         id: user.user_id,
+        first_name: user.first_name || '', 
+        last_name: user.last_name || '', 
         phone: user.phone,
         email: user.email,
         role: user.role.role_name,

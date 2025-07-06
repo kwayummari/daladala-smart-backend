@@ -31,4 +31,6 @@ router.put('/notifications/:notification_id/read', userController.markNotificati
 // Mark all notifications as read
 router.put('/notifications/read-all', userController.markAllNotificationsAsRead);
 
+router.get('/current', userController.getCurrentUser);
+
 module.exports = router;
