@@ -1,3 +1,4 @@
+// routes/user.routes.js
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
@@ -11,6 +12,9 @@ router.get('/profile', userController.getProfile);
 
 // Update user profile
 router.put('/profile', userController.updateProfile);
+
+// Upload profile picture
+router.post('/upload-avatar', userController.uploadAvatar);
 
 // Change password
 router.put('/change-password', userController.changePassword);

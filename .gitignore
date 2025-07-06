@@ -1,0 +1,8 @@
+uploads/profiles/*
+uploads/documents/*
+uploads/temp/*
+!uploads/.gitkeep
+!uploads/profiles/.gitkeep
+!uploads/documents/.gitkeep
+!uploads/temp/.gitkeep
+.env

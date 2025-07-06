@@ -57,6 +57,7 @@ app.use('/api/drivers', require('./routes/driver.routes'));
 app.use('/api/schedules', require('./routes/schedule.routes'));
 app.use('/api/reviews', require('./routes/review.routes'));
 app.use('/api/wallet', require('./routes/wallet.routes'));
+app.use('/uploads', express.static('uploads'));
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerFile));
