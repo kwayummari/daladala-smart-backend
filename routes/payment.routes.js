@@ -4,11 +4,11 @@ const router = express.Router();
 const paymentController = require('../controllers/payment.controller');
 const { verifyToken } = require('../middlewares/auth.middleware');
 
-// Webhook endpoint (no authentication required)
-router.post('/webhook/zenopay', paymentController.handleZenoPayWebhook);
-
 // All other routes require authentication
 router.use(verifyToken);
+
+// Webhook endpoint (no authentication required)
+router.post('/webhook/zenopay', paymentController.handleZenoPayWebhook);
 
 // Process payment
 router.post('/', paymentController.processPayment);

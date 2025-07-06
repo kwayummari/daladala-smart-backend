@@ -51,13 +51,41 @@ exports.topUpWallet = async (req, res) => {
     const transaction = await db.sequelize.transaction();
 
     try {
-        const { amount, payment_method, phone_number } = req.body;
+        const { amount, phone_number } = req.body;
 
-        // Validate amount
-        if (!amount || amount <= 0) {
+        // Validate input
+        if (!amount || !phone_number) {
+            await transaction.rollback();
             return res.status(400).json({
                 status: 'error',
-                message: 'Invalid amount'
+                message: 'Amount and phone number are required'
+            });
+        }
+
+        // Validate amount
+        if (amount < 1000) {
+            await transaction.rollback();
+            return res.status(400).json({
+                status: 'error',
+                message: 'Minimum top-up amount is 1,000 TZS'
+            });
+        }
+
+        if (amount > 5000000) {
+            await transaction.rollback();
+            return res.status(400).json({
+                status: 'error',
+                message: 'Maximum top-up amount is 5,000,000 TZS'
+            });
+        }
+
+        // Validate phone number format
+        const phoneRegex = /^(0|255)7\d{8}$/;
+        if (!phoneRegex.test(phone_number.replace(/[\s\-\+]/g, ''))) {
+            await transaction.rollback();
+            return res.status(400).json({
+                status: 'error',
+                message: 'Invalid Tanzanian phone number. Use format: 0744963858'
             });
         }
 
@@ -70,7 +98,11 @@ exports.topUpWallet = async (req, res) => {
         if (!wallet) {
             wallet = await Wallet.create({
                 user_id: req.userId,
-                balance: 0.00
+                balance: 0.00,
+                currency: 'TZS',
+                daily_limit: 1000000.00,
+                monthly_limit: 10000000.00,
+                is_active: true
             }, { transaction });
         }
 
@@ -94,117 +126,78 @@ exports.topUpWallet = async (req, res) => {
             await transaction.rollback();
             return res.status(400).json({
                 status: 'error',
-                message: `Daily top-up limit exceeded. Remaining: ${wallet.daily_limit - (dailyTopups || 0)} ${wallet.currency}`
+                message: `Daily top-up limit exceeded. Remaining: ${wallet.daily_limit - (dailyTopups || 0)} TZS`
+            });
+        }
+
+        // Get user details for payment
+        const user = await User.findByPk(req.userId);
+        if (!user) {
+            await transaction.rollback();
+            return res.status(404).json({
+                status: 'error',
+                message: 'User not found'
             });
         }
 
         const balanceBefore = parseFloat(wallet.balance);
-        let topupTransaction;
-        let paymentResult;
 
-        if (payment_method === 'mobile_money') {
-            // Process mobile money payment via ZenoPay
-            const user = await User.findByPk(req.userId);
+        // Process mobile money payment via ZenoPay
+        const zenoPaymentData = {
+            bookingId: `TOPUP_${Date.now()}_${req.userId}`,
+            userEmail: user.email,
+            userName: `${user.first_name} ${user.last_name}`,
+            userPhone: phone_number,
+            amount: amount
+        };
 
-            const zenoPaymentData = {
-                bookingId: `TOPUP_${Date.now()}`,
-                userEmail: user.email,
-                userName: `${user.first_name} ${user.last_name}`,
-                userPhone: phone_number,
-                amount: amount
-            };
+        const paymentResult = await zenoPayService.processMobileMoneyPayment(zenoPaymentData);
 
-            paymentResult = await zenoPayService.processMobileMoneyPayment(zenoPaymentData);
-
-            if (!paymentResult.success) {
-                await transaction.rollback();
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Failed to initiate mobile money payment',
-                    details: paymentResult.error
-                });
-            }
-
-            // Create pending wallet transaction
-            topupTransaction = await WalletTransaction.create({
-                wallet_id: wallet.wallet_id,
-                user_id: req.userId,
-                type: 'topup',
-                amount: amount,
-                balance_before: balanceBefore,
-                balance_after: balanceBefore,
-                reference_type: 'topup',
-                external_reference: paymentResult.data.orderId,
-                description: `Wallet top-up via ${payment_method}`,
-                metadata: {
-                    zenopay_data: paymentResult.data,
-                    phone_number
-                },
-                status: 'pending'
-            }, { transaction });
-
-            await transaction.commit();
-
-            res.status(200).json({
-                status: 'success',
-                message: 'Top-up initiated. Complete payment on your phone.',
-                data: {
-                    transaction_id: topupTransaction.transaction_id,
-                    amount: amount,
-                    status: 'pending',
-                    zenopay: {
-                        order_id: paymentResult.data.orderId,
-                        reference: paymentResult.data.reference,
-                        message: paymentResult.data.message,
-                        instructions: 'Please complete the payment on your mobile phone using the USSD prompt.'
-                    }
-                }
-            });
-
-        } else {
-            // For instant methods like card/bank
-            const balanceAfter = balanceBefore + amount;
-
-            await wallet.update({
-                balance: balanceAfter,
-                last_activity: new Date()
-            }, { transaction });
-
-            topupTransaction = await WalletTransaction.create({
-                wallet_id: wallet.wallet_id,
-                user_id: req.userId,
-                type: 'topup',
-                amount: amount,
-                balance_before: balanceBefore,
-                balance_after: balanceAfter,
-                reference_type: 'topup',
-                description: `Wallet top-up via ${payment_method}`,
-                status: 'completed'
-            }, { transaction });
-
-            await transaction.commit();
-
-            // Create notification
-            await Notification.create({
-                user_id: req.userId,
-                title: 'Wallet Top-up Successful',
-                message: `Your wallet has been topped up with ${amount} ${wallet.currency}. New balance: ${balanceAfter} ${wallet.currency}`,
-                type: 'success',
-                related_entity: 'wallet',
-                related_id: topupTransaction.transaction_id
-            });
-
-            res.status(200).json({
-                status: 'success',
-                message: 'Wallet topped up successfully',
-                data: {
-                    transaction_id: topupTransaction.transaction_id,
-                    amount: amount,
-                    balance: balanceAfter,
-                    status: 'completed'
-                }
+        if (!paymentResult.success) {
+            await transaction.rollback();
+            return res.status(400).json({
+                status: 'error',
+                message: 'Failed to initiate mobile money payment',
+                details: paymentResult.error
             });
         }
+
+        // Create pending wallet transaction
+        const topupTransaction = await WalletTransaction.create({
+            wallet_id: wallet.wallet_id,
+            user_id: req.userId,
+            type: 'topup',
+            amount: amount,
+            balance_before: balanceBefore,
+            balance_after: balanceBefore, // Will be updated when webhook confirms
+            reference_type: 'topup',
+            external_reference: paymentResult.data.orderId,
+            description: `Wallet top-up via mobile money`,
+            metadata: {
+                zenopay_data: paymentResult.data,
+                phone_number: phone_number,
+                zenopay_order_id: paymentResult.data.zenoOrderId
+            },
+            status: 'pending'
+        }, { transaction });
+
+        await transaction.commit();
+
+        res.status(200).json({
+            status: 'success',
+            message: 'Top-up initiated. Please complete payment on your phone.',
+            data: {
+                transaction_id: topupTransaction.transaction_id,
+                amount: amount,
+                status: 'pending',
+                zenopay: {
+                    order_id: paymentResult.data.orderId,
+                    reference: paymentResult.data.reference,
+                    message: paymentResult.data.message,
+                    instructions: 'Please complete the payment on your mobile phone using the USSD prompt sent to your phone.'
+                }
+            }
+        });
 
     } catch (error) {
         await transaction.rollback();
@@ -223,6 +216,14 @@ exports.processWalletPayment = async (req, res) => {
     try {
         const { booking_id } = req.body;
 
+        if (!booking_id) {
+            await transaction.rollback();
+            return res.status(400).json({
+                status: 'error',
+                message: 'Booking ID is required'
+            });
+        }
+
         // Get booking details
         const booking = await Booking.findOne({
             where: {
@@ -237,6 +238,14 @@ exports.processWalletPayment = async (req, res) => {
             return res.status(404).json({
                 status: 'error',
                 message: 'Booking not found'
+            });
+        }
+
+        if (booking.payment_status === 'paid') {
+            await transaction.rollback();
+            return res.status(400).json({
+                status: 'error',
+                message: 'Booking is already paid'
             });
         }
 
@@ -259,7 +268,7 @@ exports.processWalletPayment = async (req, res) => {
             await transaction.rollback();
             return res.status(400).json({
                 status: 'error',
-                message: 'Insufficient wallet balance'
+                message: `Insufficient wallet balance. Required: ${booking.fare_amount} TZS, Available: ${wallet.balance} TZS`
             });
         }
 

@@ -1,3 +1,4 @@
+// controllers/booking.controller.js
 const db = require('../models');
 const Booking = db.Booking;
 const Trip = db.Trip;
@@ -12,6 +13,14 @@ exports.createBooking = async (req, res) => {
   try {
     const { trip_id, pickup_stop_id, dropoff_stop_id, passenger_count = 1 } = req.body;
 
+    // Validate required fields
+    if (!trip_id || !pickup_stop_id || !dropoff_stop_id) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Trip ID, pickup stop, and dropoff stop are required'
+      });
+    }
+
     // Check if trip exists and is available
     const trip = await Trip.findOne({
       where: {
@@ -22,7 +31,7 @@ exports.createBooking = async (req, res) => {
       },
       include: [{
         model: db.Route,
-        attributes: ['route_id']
+        attributes: ['route_id', 'route_name', 'start_point', 'end_point']
       }]
     });
 
@@ -39,7 +48,7 @@ exports.createBooking = async (req, res) => {
         route_id: trip.Route.route_id,
         start_stop_id: pickup_stop_id,
         end_stop_id: dropoff_stop_id,
-        fare_type: 'standard', // Default to standard fare
+        fare_type: 'standard',
         is_active: true
       }
     });
@@ -86,13 +95,19 @@ exports.createBooking = async (req, res) => {
         fare_amount: booking.fare_amount,
         passenger_count: booking.passenger_count,
         status: booking.status,
-        payment_status: booking.payment_status
+        payment_status: booking.payment_status,
+        route_info: {
+          route_name: trip.Route.route_name,
+          start_point: trip.Route.start_point,
+          end_point: trip.Route.end_point
+        }
       }
     });
   } catch (error) {
+    console.error('Create booking error:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message
+      message: 'Failed to create booking'
     });
   }
 };
@@ -101,7 +116,7 @@ exports.createBooking = async (req, res) => {
 exports.getUserBookings = async (req, res) => {
   try {
     const { status } = req.query;
-    
+
     let whereClause = {
       user_id: req.userId
     };
@@ -118,17 +133,18 @@ exports.getUserBookings = async (req, res) => {
           include: [{
             model: db.Route,
             attributes: ['route_id', 'route_name', 'start_point', 'end_point']
-          }]
+          }],
+          attributes: ['trip_id', 'start_time', 'end_time', 'status']
         },
         {
           model: Stop,
           as: 'pickupStop',
-          attributes: ['stop_id', 'stop_name']
+          attributes: ['stop_id', 'stop_name', 'latitude', 'longitude']
         },
         {
           model: Stop,
           as: 'dropoffStop',
-          attributes: ['stop_id', 'stop_name']
+          attributes: ['stop_id', 'stop_name', 'latitude', 'longitude']
         }
       ],
       order: [['booking_time', 'DESC']]
@@ -139,17 +155,25 @@ exports.getUserBookings = async (req, res) => {
       data: bookings
     });
   } catch (error) {
+    console.error('Get user bookings error:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message
+      message: 'Failed to fetch user bookings'
     });
   }
 };
 
-// Get booking details
+// Get booking details - FIXED VERSION
 exports.getBookingDetails = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Booking ID is required'
+      });
+    }
 
     const booking = await Booking.findOne({
       where: {
@@ -166,17 +190,21 @@ exports.getBookingDetails = async (req, res) => {
             },
             {
               model: db.Vehicle,
-              attributes: ['vehicle_id', 'plate_number', 'vehicle_type', 'color']
+              attributes: ['vehicle_id', 'plate_number', 'vehicle_type', 'color'],
+              required: false
             },
             {
               model: db.Driver,
               attributes: ['driver_id', 'rating'],
+              required: false,
               include: [{
                 model: User,
-                attributes: ['first_name', 'last_name', 'profile_picture']
+                attributes: ['first_name', 'last_name', 'profile_picture'],
+                required: false
               }]
             }
-          ]
+          ],
+          attributes: ['trip_id', 'start_time', 'end_time', 'status']
         },
         {
           model: Stop,
@@ -203,11 +231,15 @@ exports.getBookingDetails = async (req, res) => {
     }
 
     // Get payment details if any
-    const payment = await db.Payment.findOne({
-      where: {
-        booking_id: id
-      }
-    });
+    let payment = null;
+    try {
+      payment = await db.Payment.findOne({
+        where: { booking_id: id },
+        attributes: ['payment_id', 'amount', 'currency', 'payment_method', 'status', 'payment_time', 'transaction_id']
+      });
+    } catch (paymentError) {
+      console.warn('Could not fetch payment details:', paymentError.message);
+    }
 
     res.status(200).json({
       status: 'success',
@@ -217,9 +249,10 @@ exports.getBookingDetails = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Get booking details error:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message
+      message: 'Failed to fetch booking details'
     });
   }
 };
@@ -243,55 +276,48 @@ exports.cancelBooking = async (req, res) => {
       });
     }
 
-    // Check if booking can be cancelled
-    if (booking.status !== 'pending' && booking.status !== 'confirmed') {
+    if (booking.status === 'cancelled') {
       return res.status(400).json({
         status: 'error',
-        message: 'Booking cannot be cancelled at this stage'
+        message: 'Booking is already cancelled'
       });
     }
 
-    // Update booking status
+    if (booking.payment_status === 'paid') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Cannot cancel paid booking. Please contact support for refund.'
+      });
+    }
+
     await booking.update({
-      status: 'cancelled'
+      status: 'cancelled',
+      cancelled_at: new Date()
     });
 
-    // If payment was made, initiate refund
-    if (booking.payment_status === 'paid') {
-      await db.Payment.update(
-        {
-          status: 'refunded'
-        },
-        {
-          where: {
-            booking_id: id
-          }
-        }
-      );
-
-      await booking.update({
-        payment_status: 'refunded'
-      });
-    }
-
-    // Create notification for user
+    // Create notification
     await Notification.create({
       user_id: req.userId,
       title: 'Booking Cancelled',
-      message: `Your booking #${booking.booking_id} has been cancelled.`,
+      message: `Your booking #${id} has been cancelled successfully.`,
       type: 'info',
       related_entity: 'booking',
-      related_id: booking.booking_id
+      related_id: id
     });
 
     res.status(200).json({
       status: 'success',
-      message: 'Booking cancelled successfully'
+      message: 'Booking cancelled successfully',
+      data: {
+        booking_id: id,
+        status: 'cancelled'
+      }
     });
   } catch (error) {
+    console.error('Cancel booking error:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message
+      message: 'Failed to cancel booking'
     });
   }
 };
