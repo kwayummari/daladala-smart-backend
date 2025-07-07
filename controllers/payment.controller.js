@@ -174,7 +174,6 @@ exports.processPayment = async (req, res) => {
       };
 
     } else if (payment_method === 'mobile_money') {
-      // Handle mobile money payment via ZenoPay
       if (!phone_number) {
         return res.status(400).json({
           status: 'error',
@@ -185,18 +184,32 @@ exports.processPayment = async (req, res) => {
       // Get user details
       const user = await User.findByPk(req.userId);
 
-      // Create payment record first
+      // 🔥 GENERATE ORDER ID FIRST - before creating payment
+      const orderId = `DLS_${booking.booking_id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      console.log('📝 Generated Order ID:', orderId);
+
+      // Create payment record with the order ID we'll send to ZenoPay
       const payment = await Payment.create({
         booking_id: booking.booking_id,
         user_id: req.userId,
         amount: amount,
         payment_method: 'mobile_money',
         payment_provider: 'zenopay',
-        status: 'pending'
+        status: 'pending',
+        external_reference: orderId, // 🔥 SET THIS BEFORE CALLING ZENOPAY
+        initiated_time: new Date()
       });
 
-      // Process with ZenoPay
+      console.log('💳 Payment record created:', {
+        payment_id: payment.payment_id,
+        external_reference: orderId,
+        booking_id: booking.booking_id
+      });
+
+      // Process with ZenoPay using OUR generated order ID
       const zenoResult = await zenoPayService.processMobileMoneyPayment({
+        orderId: orderId, // 🔥 USE OUR GENERATED ORDER ID
         bookingId: booking.booking_id,
         userEmail: user.email,
         userName: `${user.first_name} ${user.last_name}`,
@@ -205,11 +218,18 @@ exports.processPayment = async (req, res) => {
       });
 
       if (zenoResult.success) {
-        // Update payment with external reference
+        // Update payment with ZenoPay response data
         await payment.update({
-          external_reference: zenoResult.data.orderId,
-          external_transaction_id: zenoResult.data.zenoOrderId,
-          metadata: zenoResult.data
+          external_transaction_id: zenoResult.data.zenoReference || zenoResult.data.reference,
+          metadata: {
+            zenopay_response: zenoResult.data,
+            initiated_at: new Date().toISOString()
+          }
+        });
+
+        console.log('✅ ZenoPay request successful:', {
+          our_order_id: orderId,
+          zenopay_reference: zenoResult.data.reference
         });
 
         responseData = {
@@ -217,20 +237,14 @@ exports.processPayment = async (req, res) => {
           amount: amount,
           payment_method: 'mobile_money',
           status: 'pending',
-          external_reference: zenoResult.data.orderId,
+          external_reference: orderId,
           message: zenoResult.data.message,
           instructions: 'Please complete the payment on your mobile phone'
         };
       } else {
-        await payment.update({ status: 'failed' });
-
-        // Send failure notifications
-        await notificationService.sendPaymentFailure({
-          payment,
-          user,
-          booking,
-          trip: booking.Trip,
-          route: booking.Trip?.Route
+        await payment.update({
+          status: 'failed',
+          failure_reason: zenoResult.message || 'ZenoPay request failed'
         });
 
         return res.status(400).json({
