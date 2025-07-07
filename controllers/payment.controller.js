@@ -627,10 +627,8 @@ async function handleBookingPayment(orderId, status, webhookData, reference) {
           status: 'confirmed',
           payment_status: 'paid'
         }, { transaction });
-        console.log('✅ Booking status updated to confirmed');
 
       await transaction.commit();
-      console.log('✅ Booking payment completed successfully');
 
       // Send beautiful payment confirmation notifications
       try {
