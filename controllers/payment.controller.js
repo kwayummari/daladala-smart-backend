@@ -7,6 +7,7 @@ const Wallet = db.Wallet;
 const WalletTransaction = db.WalletTransaction;
 const Notification = db.Notification;
 const zenoPayService = require('../services/zenoPayService');
+const notificationService = require('../services/notificationService');
 
 // Helper function to get wallet balance
 async function getWalletBalance(userId) {
@@ -156,6 +157,15 @@ exports.processPayment = async (req, res) => {
         payment_status: 'paid'
       });
 
+      // Send beautiful notifications
+      await notificationService.sendPaymentConfirmation({
+        payment,
+        user: await User.findByPk(req.userId),
+        booking,
+        trip: booking.Trip,
+        route: booking.Trip?.Route
+      });
+
       responseData = {
         payment_id: payment.payment_id,
         amount: amount,
@@ -213,6 +223,16 @@ exports.processPayment = async (req, res) => {
         };
       } else {
         await payment.update({ status: 'failed' });
+
+        // Send failure notifications
+        await notificationService.sendPaymentFailure({
+          payment,
+          user,
+          booking,
+          trip: booking.Trip,
+          route: booking.Trip?.Route
+        });
+
         return res.status(400).json({
           status: 'error',
           message: zenoResult.message || 'Payment initiation failed'
@@ -499,6 +519,14 @@ async function handleWalletTopup(orderId, status, webhookData) {
 
       console.log('✅ Wallet top-up completed successfully');
 
+      // Send beautiful notifications
+      await notificationService.sendWalletTopupConfirmation({
+        user: await db.User.findByPk(walletTransaction.user_id),
+        transaction: walletTransaction,
+        wallet,
+        amount: topupAmount
+      });
+
       // Create success notification
       try {
         await db.Notification.create({
@@ -592,6 +620,34 @@ async function handleBookingPayment(orderId, status, webhookData, reference) {
       await transaction.commit();
       console.log('✅ Booking payment completed successfully');
 
+      // Send beautiful payment confirmation notifications
+      try {
+        const paymentWithBooking = await db.Payment.findByPk(payment.payment_id, {
+          include: [{
+            model: db.Booking,
+            include: [{
+              model: db.Trip,
+              include: [{
+                model: db.Route,
+                attributes: ['route_name', 'start_point', 'end_point']
+              }]
+            }]
+          }]
+        });
+
+        const user = await db.User.findByPk(payment.user_id);
+
+        await notificationService.sendPaymentConfirmation({
+          payment: paymentWithBooking,
+          user,
+          booking: paymentWithBooking.Booking,
+          trip: paymentWithBooking.Booking.Trip,
+          route: paymentWithBooking.Booking.Trip?.Route
+        });
+      } catch (notifError) {
+        console.log('⚠️  Failed to send payment confirmation notifications:', notifError.message);
+      }
+
     } else if (status === 'failed') {
       await payment.update({
         status: 'failed',
@@ -604,6 +660,34 @@ async function handleBookingPayment(orderId, status, webhookData, reference) {
 
       await transaction.commit();
       console.log('❌ Booking payment marked as failed');
+
+      // Send failure notifications
+      try {
+        const paymentWithBooking = await db.Payment.findByPk(payment.payment_id, {
+          include: [{
+            model: db.Booking,
+            include: [{
+              model: db.Trip,
+              include: [{
+                model: db.Route,
+                attributes: ['route_name', 'start_point', 'end_point']
+              }]
+            }]
+          }]
+        });
+
+        const user = await db.User.findByPk(payment.user_id);
+
+        await notificationService.sendPaymentFailure({
+          payment: paymentWithBooking,
+          user,
+          booking: paymentWithBooking.Booking,
+          trip: paymentWithBooking.Booking.Trip,
+          route: paymentWithBooking.Booking.Trip?.Route
+        });
+      } catch (notifError) {
+        console.log('⚠️  Failed to send payment failure notifications:', notifError.message);
+      }
     }
 
   } catch (error) {
