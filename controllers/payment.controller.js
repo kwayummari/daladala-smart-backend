@@ -278,6 +278,7 @@ exports.processPayment = async (req, res) => {
 exports.handleZenoPayWebhook = async (req, res) => {
   try {
     const webhookData = req.body;
+    console.log(webhookData);
     const apiKey = req.headers['x-api-key'];
 
     // Verify webhook authenticity
