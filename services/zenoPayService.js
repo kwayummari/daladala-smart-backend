@@ -68,6 +68,57 @@ class ZenoPayService {
         }
     }
 
+    async processMobileMoneyPaymentWithOrderId(paymentData) {
+        try {
+            const { orderId, userEmail, userName, userPhone, amount } = paymentData;
+
+            const requestPayload = {
+                order_id: orderId, // Use provided order ID
+                buyer_email: userEmail,
+                buyer_name: userName,
+                buyer_phone: this.formatPhoneNumber(userPhone),
+                amount: Math.round(amount),
+                webhook_url: this.webhookUrl
+            };
+
+            const response = await axios.post(
+                `${this.apiUrl}/mobile_money_tanzania`,
+                requestPayload,
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': this.apiKey
+                    },
+                    timeout: 30000
+                }
+            );
+
+            return {
+                success: true,
+                data: {
+                    orderId,
+                    zenoOrderId: response.data.data?.order_id,
+                    reference: response.data.reference,
+                    status: response.data.result,
+                    message: response.data.message,
+                    transactionId: response.data.data?.transid,
+                    channel: response.data.data?.channel,
+                    msisdn: response.data.data?.msisdn
+                }
+            };
+
+        } catch (error) {
+            return {
+                success: false,
+                error: {
+                    message: error.response?.data?.message || error.message,
+                    code: error.response?.status || 500,
+                    details: error.response?.data
+                }
+            };
+        }
+    }
+
     /**
      * Check payment status
      * @param {string} orderId - ZenoPay order ID

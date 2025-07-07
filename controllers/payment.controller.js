@@ -208,9 +208,8 @@ exports.processPayment = async (req, res) => {
       });
 
       // Process with ZenoPay using OUR generated order ID
-      const zenoResult = await zenoPayService.processMobileMoneyPayment({
-        orderId: orderId, // 🔥 USE OUR GENERATED ORDER ID
-        bookingId: booking.booking_id,
+      const zenoResult = await zenoPayService.processMobileMoneyPaymentWithOrderId({
+        orderId: orderId,
         userEmail: user.email,
         userName: `${user.first_name} ${user.last_name}`,
         userPhone: phone_number,
