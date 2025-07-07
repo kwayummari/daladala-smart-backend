@@ -219,7 +219,7 @@ exports.processPayment = async (req, res) => {
       if (zenoResult.success) {
         // Update payment with ZenoPay response data
         await payment.update({
-          external_transaction_id: zenoResult.data.zenoReference || zenoResult.data.reference,
+          external_transaction_id: zenoResult.data.reference,
           metadata: {
             zenopay_response: zenoResult.data,
             initiated_at: new Date().toISOString()
@@ -228,6 +228,7 @@ exports.processPayment = async (req, res) => {
 
         console.log('✅ ZenoPay request successful:', {
           our_order_id: orderId,
+          payment_id: payment.payment_id,
           zenopay_reference: zenoResult.data.reference
         });
 
