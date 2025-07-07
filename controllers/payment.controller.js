@@ -97,6 +97,11 @@ exports.processPayment = async (req, res) => {
       });
     }
 
+    console.log('💳 Processing payment for booking:');
+    console.log('   Booking ID:', booking.booking_id);
+    console.log('   Fare Amount:', booking.fare_amount);
+    console.log('   Payment Method:', payment_method);
+
     // Check if payment already exists
     const existingPayment = await Payment.findOne({
       where: { booking_id: booking.booking_id }
@@ -110,7 +115,19 @@ exports.processPayment = async (req, res) => {
     }
 
     let responseData = {};
-    const amount = parseFloat(booking.total_amount);
+    const amount = parseFloat(booking.fare_amount);
+
+    // Validate amount
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid booking amount',
+        debug: {
+          fare_amount: booking.fare_amount,
+          parsed_amount: amount
+        }
+      });
+    }
 
     if (payment_method === 'wallet') {
       // Handle wallet payment
