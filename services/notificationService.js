@@ -141,8 +141,6 @@ class NotificationService {
         const { payment, user, booking, trip, route } = paymentData;
 
         try {
-            console.log('📧 Sending payment confirmation notifications...');
-
             // 1. Create in-app notification
             await this.createNotification({
                 user_id: user.user_id,
@@ -156,7 +154,6 @@ class NotificationService {
                 }
             });
 
-            // 2. Send beautiful email
             const emailHtml = this.generatePaymentSuccessEmail({
                 user, payment, booking, trip, route
             });
@@ -174,10 +171,7 @@ class NotificationService {
 
             await this.sendSMS(user.phone_number, smsMessage);
 
-            console.log('✅ All payment confirmation notifications sent successfully');
-
         } catch (error) {
-            console.error('❌ Failed to send payment confirmation:', error);
         }
     }
 

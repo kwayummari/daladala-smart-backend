@@ -554,7 +554,6 @@ async function handleWalletTopup(orderId, status, webhookData) {
             new_balance: newBalance
           }
         });
-        console.log('✅ Success notification created');
       } catch (notificationError) {
         console.log('⚠️  Failed to create notification:', notificationError.message);
       }
