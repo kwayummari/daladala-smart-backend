@@ -623,13 +623,11 @@ async function handleBookingPayment(orderId, status, webhookData, reference) {
 
       // Update booking status
       const booking = await db.Booking.findByPk(payment.booking_id, { transaction });
-      if (booking && booking.status === 'pending_payment') {
         await booking.update({
           status: 'confirmed',
           payment_status: 'paid'
         }, { transaction });
         console.log('✅ Booking status updated to confirmed');
-      }
 
       await transaction.commit();
       console.log('✅ Booking payment completed successfully');
