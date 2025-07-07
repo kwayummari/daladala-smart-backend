@@ -52,6 +52,11 @@ module.exports = (sequelize, DataTypes) => {
       unique: true,
       comment: 'External transaction ID from payment provider'
     },
+    external_reference: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: 'External order/reference ID sent to payment provider (e.g., ZenoPay order_id)'
+    },
     internal_reference: {
       type: DataTypes.STRING(50),
       allowNull: true,
@@ -140,6 +145,9 @@ module.exports = (sequelize, DataTypes) => {
         fields: ['payment_method']
       },
       {
+        fields: ['external_reference']
+      },
+      {
         fields: ['created_at']
       }
     ],
@@ -179,6 +187,13 @@ module.exports = (sequelize, DataTypes) => {
       where: { booking_id: bookingId }
     });
   };
+
+  Payment.findByExternalReference = function (externalReference) {
+    return this.findOne({
+      where: { external_reference: externalReference }
+    });
+  };
+  
 
   Payment.getTotalRevenue = async function (startDate, endDate) {
     const { Op } = require('sequelize');
