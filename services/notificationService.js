@@ -138,7 +138,15 @@ class NotificationService {
      * Send payment confirmation notifications
      */
     async sendPaymentConfirmation(paymentData) {
-        const { payment, user, booking, trip, route } = paymentData;
+      const { payment, user, booking, trip, route } = paymentData;
+      
+      console.log('📱 User object for SMS debug:', {
+        user_id: user.user_id,
+        phone: user.phone,
+        phone_number: user.phone_number,
+        email: user.email,
+        all_fields: Object.keys(user.dataValues || user)
+    });
 
         try {
             // 1. Create in-app notification
@@ -169,7 +177,7 @@ class NotificationService {
                 user, payment, booking, trip, route
             });
 
-            await this.sendSMS(user.phone_number, smsMessage);
+            await this.sendSMS(user.phone, smsMessage);
 
         } catch (error) {
         }
@@ -211,7 +219,7 @@ class NotificationService {
             // 3. Send SMS
             const smsMessage = `Payment failed for your Daladala Smart booking. Please try again or use a different payment method. Reference: ${payment.payment_id}`;
 
-            await this.sendSMS(user.phone_number, smsMessage);
+            await this.sendSMS(user.phone, smsMessage);
 
             console.log('✅ All payment failure notifications sent successfully');
 
@@ -256,7 +264,7 @@ class NotificationService {
             // 3. Send SMS
             const smsMessage = `Wallet topped up! +${amount.toLocaleString()} TZS. New balance: ${wallet.balance.toLocaleString()} TZS. Thank you for using Daladala Smart!`;
 
-            await this.sendSMS(user.phone_number, smsMessage);
+            await this.sendSMS(user.phone, smsMessage);
 
             console.log('✅ All wallet top-up notifications sent successfully');
 
