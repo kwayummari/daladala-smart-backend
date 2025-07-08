@@ -457,7 +457,7 @@ exports.getFareBetweenStops = async (req, res) => {
 
 
 /**
- * Get popular routes based on booking count
+ * Get popular routes based on booking count (without reviews)
  */
 exports.getPopularRoutes = async (req, res) => {
   try {
@@ -474,24 +474,22 @@ exports.getPopularRoutes = async (req, res) => {
         r.estimated_time_minutes as estimated_duration,
         r.status,
         COUNT(b.booking_id) as booking_count,
-        AVG(b.fare_amount) as base_fare,
-        AVG(CAST(rev.rating AS DECIMAL(3,2))) as average_rating
+        AVG(b.fare_amount) as base_fare
       FROM routes r
       LEFT JOIN trips t ON r.route_id = t.route_id
       LEFT JOIN bookings b ON t.trip_id = b.trip_id 
         AND b.status IN ('confirmed', 'completed')
-      LEFT JOIN reviews rev ON r.route_id = rev.route_id
       WHERE r.status = 'active'
       GROUP BY r.route_id, r.route_number, r.route_name, r.start_point, 
                r.end_point, r.distance_km, r.estimated_time_minutes, r.status
-      ORDER BY booking_count DESC, average_rating DESC
+      ORDER BY booking_count DESC, r.route_name ASC
       LIMIT ?
     `, {
       replacements: [parseInt(limit)],
       type: db.sequelize.QueryTypes.SELECT
     });
 
-    // Format the response to match frontend expectations
+    // Format the response
     const formattedRoutes = popularRoutes.map(route => ({
       route_id: route.route_id,
       route_number: route.route_number,
@@ -499,13 +497,11 @@ exports.getPopularRoutes = async (req, res) => {
       start_point: route.start_point,
       end_point: route.end_point,
       distance_km: route.distance_km,
-      estimated_duration: route.estimated_duration,
+      estimated_duration: route.estimated_time_minutes,
       status: route.status,
       booking_count: parseInt(route.booking_count) || 0,
-      base_fare: route.base_fare ? parseFloat(route.base_fare) : 1000, // Default to 1000 TZS
-      rating: route.average_rating ? parseFloat(route.average_rating).toFixed(1) : null,
-      stops_count: null, // Will be filled if needed
-      vehicle_count: null // Will be filled if needed
+      base_fare: route.base_fare ? parseFloat(route.base_fare) : 1000,
+      rating: null // Will add once we know reviews table structure
     }));
 
     res.status(200).json({
