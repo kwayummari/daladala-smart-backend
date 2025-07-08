@@ -470,11 +470,11 @@ exports.getPopularRoutes = async (req, res) => {
         r.route_name,
         r.start_point,
         r.end_point,
-        r.description,
         r.distance_km,
         r.estimated_time_minutes as estimated_duration,
         r.status,
         COUNT(b.booking_id) as booking_count,
+        AVG(b.fare_amount) as base_fare,
         AVG(CAST(rev.rating AS DECIMAL(3,2))) as average_rating
       FROM routes r
       LEFT JOIN trips t ON r.route_id = t.route_id
@@ -483,50 +483,34 @@ exports.getPopularRoutes = async (req, res) => {
       LEFT JOIN reviews rev ON r.route_id = rev.route_id
       WHERE r.status = 'active'
       GROUP BY r.route_id, r.route_number, r.route_name, r.start_point, 
-               r.end_point, r.description, r.distance_km, r.estimated_time_minutes, r.status
+               r.end_point, r.distance_km, r.estimated_time_minutes, r.status
       ORDER BY booking_count DESC, average_rating DESC
-      LIMIT :limit
+      LIMIT ?
     `, {
-      replacements: { limit: parseInt(limit) },
+      replacements: [parseInt(limit)],
       type: db.sequelize.QueryTypes.SELECT
     });
 
-    // Add base_fare from fares table if needed
-    const routesWithFares = await Promise.all(
-      popularRoutes.map(async (route) => {
-        try {
-          // Get base fare from fares table
-          const fareResult = await db.sequelize.query(`
-            SELECT fare_amount as base_fare 
-            FROM fares 
-            WHERE route_id = :routeId 
-            ORDER BY fare_amount ASC 
-            LIMIT 1
-          `, {
-            replacements: { routeId: route.route_id },
-            type: db.sequelize.QueryTypes.SELECT
-          });
-
-          return {
-            ...route,
-            base_fare: fareResult.length > 0 ? fareResult[0].base_fare : 0,
-            booking_count: parseInt(route.booking_count) || 0,
-            average_rating: route.average_rating ? parseFloat(route.average_rating).toFixed(1) : null
-          };
-        } catch (error) {
-          return {
-            ...route,
-            base_fare: 0,
-            booking_count: parseInt(route.booking_count) || 0,
-            average_rating: route.average_rating ? parseFloat(route.average_rating).toFixed(1) : null
-          };
-        }
-      })
-    );
+    // Format the response to match frontend expectations
+    const formattedRoutes = popularRoutes.map(route => ({
+      route_id: route.route_id,
+      route_number: route.route_number,
+      route_name: route.route_name,
+      start_point: route.start_point,
+      end_point: route.end_point,
+      distance_km: route.distance_km,
+      estimated_duration: route.estimated_duration,
+      status: route.status,
+      booking_count: parseInt(route.booking_count) || 0,
+      base_fare: route.base_fare ? parseFloat(route.base_fare) : 1000, // Default to 1000 TZS
+      rating: route.average_rating ? parseFloat(route.average_rating).toFixed(1) : null,
+      stops_count: null, // Will be filled if needed
+      vehicle_count: null // Will be filled if needed
+    }));
 
     res.status(200).json({
       status: 'success',
-      data: routesWithFares
+      data: formattedRoutes
     });
 
   } catch (error) {
