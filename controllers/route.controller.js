@@ -457,52 +457,36 @@ exports.getFareBetweenStops = async (req, res) => {
 
 
 /**
- * Get popular routes based on booking frequency
+ * Get popular routes based on booking count
  */
 exports.getPopularRoutes = async (req, res) => {
   try {
     const { limit = 10 } = req.query;
 
-    const popularRoutes = await db.Route.findAll({
-      attributes: [
-        'route_id',
-        'route_name',
-        'start_point',
-        'end_point',
-        'base_fare',
-        'estimated_duration',
-        'status',
-        [db.sequelize.fn('COUNT', db.sequelize.col('Bookings.booking_id')), 'booking_count'],
-        [db.sequelize.fn('AVG', db.sequelize.col('Reviews.rating')), 'average_rating']
-      ],
-      include: [
-        {
-          model: db.Trip,
-          include: [{
-            model: db.Booking,
-            attributes: [],
-            where: {
-              status: ['confirmed', 'completed']
-            },
-            required: false
-          }]
-        },
-        {
-          model: db.Review,
-          attributes: [],
-          required: false
-        }
-      ],
-      where: {
-        status: 'active'
-      },
-      group: ['Route.route_id'],
-      order: [
-        [db.sequelize.literal('booking_count'), 'DESC'],
-        [db.sequelize.literal('average_rating'), 'DESC']
-      ],
-      limit: parseInt(limit),
-      subQuery: false
+    const popularRoutes = await db.sequelize.query(`
+      SELECT 
+        r.route_id,
+        r.route_name,
+        r.start_point,
+        r.end_point,
+        r.base_fare,
+        r.estimated_duration,
+        r.status,
+        COUNT(b.booking_id) as booking_count,
+        AVG(CAST(rev.rating AS DECIMAL(3,2))) as average_rating
+      FROM routes r
+      LEFT JOIN trips t ON r.route_id = t.route_id
+      LEFT JOIN bookings b ON t.trip_id = b.trip_id 
+        AND b.status IN ('confirmed', 'completed')
+      LEFT JOIN reviews rev ON r.route_id = rev.route_id
+      WHERE r.status = 'active'
+      GROUP BY r.route_id, r.route_name, r.start_point, r.end_point, 
+               r.base_fare, r.estimated_duration, r.status
+      ORDER BY booking_count DESC, average_rating DESC
+      LIMIT :limit
+    `, {
+      replacements: { limit: parseInt(limit) },
+      type: db.sequelize.QueryTypes.SELECT
     });
 
     res.status(200).json({
