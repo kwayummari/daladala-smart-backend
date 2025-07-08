@@ -44,6 +44,20 @@ app.get('/', (req, res) => {
   res.json({ message: 'Welcome to Daladala Smart API' });
 });
 
+const healthRoutes = require('./routes/health.routes');
+app.use('/api/health', healthRoutes);
+
+// Root health check endpoint (for load balancers)
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'Daladala Smart API is running',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+
 // Routes
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/users', require('./routes/user.routes'));
