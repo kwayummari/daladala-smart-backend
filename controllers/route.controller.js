@@ -466,11 +466,13 @@ exports.getPopularRoutes = async (req, res) => {
     const popularRoutes = await db.sequelize.query(`
       SELECT 
         r.route_id,
+        r.route_number,
         r.route_name,
         r.start_point,
         r.end_point,
-        r.base_fare,
-        r.estimated_duration,
+        r.description,
+        r.distance_km,
+        r.estimated_time_minutes as estimated_duration,
         r.status,
         COUNT(b.booking_id) as booking_count,
         AVG(CAST(rev.rating AS DECIMAL(3,2))) as average_rating
@@ -480,8 +482,8 @@ exports.getPopularRoutes = async (req, res) => {
         AND b.status IN ('confirmed', 'completed')
       LEFT JOIN reviews rev ON r.route_id = rev.route_id
       WHERE r.status = 'active'
-      GROUP BY r.route_id, r.route_name, r.start_point, r.end_point, 
-               r.base_fare, r.estimated_duration, r.status
+      GROUP BY r.route_id, r.route_number, r.route_name, r.start_point, 
+               r.end_point, r.description, r.distance_km, r.estimated_time_minutes, r.status
       ORDER BY booking_count DESC, average_rating DESC
       LIMIT :limit
     `, {
@@ -489,9 +491,42 @@ exports.getPopularRoutes = async (req, res) => {
       type: db.sequelize.QueryTypes.SELECT
     });
 
+    // Add base_fare from fares table if needed
+    const routesWithFares = await Promise.all(
+      popularRoutes.map(async (route) => {
+        try {
+          // Get base fare from fares table
+          const fareResult = await db.sequelize.query(`
+            SELECT fare_amount as base_fare 
+            FROM fares 
+            WHERE route_id = :routeId 
+            ORDER BY fare_amount ASC 
+            LIMIT 1
+          `, {
+            replacements: { routeId: route.route_id },
+            type: db.sequelize.QueryTypes.SELECT
+          });
+
+          return {
+            ...route,
+            base_fare: fareResult.length > 0 ? fareResult[0].base_fare : 0,
+            booking_count: parseInt(route.booking_count) || 0,
+            average_rating: route.average_rating ? parseFloat(route.average_rating).toFixed(1) : null
+          };
+        } catch (error) {
+          return {
+            ...route,
+            base_fare: 0,
+            booking_count: parseInt(route.booking_count) || 0,
+            average_rating: route.average_rating ? parseFloat(route.average_rating).toFixed(1) : null
+          };
+        }
+      })
+    );
+
     res.status(200).json({
       status: 'success',
-      data: popularRoutes
+      data: routesWithFares
     });
 
   } catch (error) {
