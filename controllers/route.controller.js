@@ -454,3 +454,67 @@ exports.getFareBetweenStops = async (req, res) => {
     });
   }
 };
+
+
+/**
+ * Get popular routes based on booking frequency
+ */
+exports.getPopularRoutes = async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+
+    const popularRoutes = await db.Route.findAll({
+      attributes: [
+        'route_id',
+        'route_name',
+        'start_point',
+        'end_point',
+        'base_fare',
+        'estimated_duration',
+        'status',
+        [db.sequelize.fn('COUNT', db.sequelize.col('Bookings.booking_id')), 'booking_count'],
+        [db.sequelize.fn('AVG', db.sequelize.col('Reviews.rating')), 'average_rating']
+      ],
+      include: [
+        {
+          model: db.Trip,
+          include: [{
+            model: db.Booking,
+            attributes: [],
+            where: {
+              status: ['confirmed', 'completed']
+            },
+            required: false
+          }]
+        },
+        {
+          model: db.Review,
+          attributes: [],
+          required: false
+        }
+      ],
+      where: {
+        status: 'active'
+      },
+      group: ['Route.route_id'],
+      order: [
+        [db.sequelize.literal('booking_count'), 'DESC'],
+        [db.sequelize.literal('average_rating'), 'DESC']
+      ],
+      limit: parseInt(limit),
+      subQuery: false
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: popularRoutes
+    });
+
+  } catch (error) {
+    console.error('❌ Get popular routes error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch popular routes'
+    });
+  }
+};

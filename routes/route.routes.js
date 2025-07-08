@@ -7,6 +7,8 @@ const { verifyToken, isAdmin } = require('../middlewares/auth.middleware');
 // IMPORTANT: Put search route BEFORE the /:id route to avoid conflicts
 router.get('/search', routeController.searchRoutes);
 
+router.get('/popular', routeController.getPopularRoutes);
+
 // Get fare between stops - also needs to be before /:id
 router.get('/fare', routeController.getFareBetweenStops);
 
