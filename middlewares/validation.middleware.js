@@ -47,9 +47,18 @@ const simplifiedUserValidationRules = () => {
 
 const loginValidationRules = () => {
   return [
-    body('phone')
+    body('identifier')
       .notEmpty()
-      .withMessage('Phone number or email is required'),
+      .withMessage('Phone number or email is required')
+      .bail()
+      .custom((value) => {
+        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+        const isPhone = /^[0-9]{7,15}$/.test(value); // Adjust based on your phone format
+        if (!isEmail && !isPhone) {
+          throw new Error('Enter a valid phone number or email address');
+        }
+        return true;
+      }),
 
     body('password')
       .notEmpty()

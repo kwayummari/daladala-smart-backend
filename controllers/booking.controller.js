@@ -14,13 +14,6 @@ exports.createBooking = async (req, res) => {
   try {
     const { trip_id, pickup_stop_id, dropoff_stop_id, passenger_count = 1 } = req.body;
 
-    console.log('🎫 Creating booking with data:');
-    console.log('   Trip ID:', trip_id);
-    console.log('   Pickup Stop ID:', pickup_stop_id);
-    console.log('   Dropoff Stop ID:', dropoff_stop_id);
-    console.log('   Passenger Count:', passenger_count);
-    console.log('   User ID:', req.userId);
-
     if (!trip_id || !pickup_stop_id || !dropoff_stop_id) {
       return res.status(400).json({
         status: 'error',
@@ -28,8 +21,6 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    // Step 1: Check if trip exists and is available
-    console.log('🔍 Checking if trip exists...');
     const trip = await Trip.findOne({
       where: {
         trip_id,
@@ -44,8 +35,6 @@ exports.createBooking = async (req, res) => {
     });
 
     if (!trip) {
-      console.log('❌ Trip not found or not available');
-
       // Debug: Check if trip exists with any status
       const anyTrip = await Trip.findByPk(trip_id, {
         include: [{
@@ -55,13 +44,6 @@ exports.createBooking = async (req, res) => {
       });
 
       if (anyTrip) {
-        console.log('⚠️  Trip exists but has status:', anyTrip.status);
-        console.log('   Trip details:', {
-          trip_id: anyTrip.trip_id,
-          status: anyTrip.status,
-          start_time: anyTrip.start_time,
-          route: anyTrip.Route?.route_name
-        });
 
         return res.status(404).json({
           status: 'error',
@@ -72,7 +54,6 @@ exports.createBooking = async (req, res) => {
           }
         });
       } else {
-        console.log('❌ Trip does not exist in database');
 
         // Show available trips for debugging
         const availableTrips = await Trip.findAll({
@@ -89,12 +70,6 @@ exports.createBooking = async (req, res) => {
           }]
         });
 
-        console.log('Available trips:', availableTrips.map(t => ({
-          id: t.trip_id,
-          status: t.status,
-          route: t.Route?.route_name
-        })));
-
         return res.status(404).json({
           status: 'error',
           message: 'Trip not found in database',
@@ -106,22 +81,7 @@ exports.createBooking = async (req, res) => {
       }
     }
 
-    console.log('✅ Trip found:', {
-      trip_id: trip.trip_id,
-      status: trip.status,
-      route: trip.Route.route_name,
-      route_id: trip.Route.route_id
-    });
-
-    // Step 2: Check if pickup and dropoff stops exist
-    console.log('🔍 Checking if stops exist...');
-    const [pickupStop, dropoffStop] = await Promise.all([
-      Stop.findByPk(pickup_stop_id),
-      Stop.findByPk(dropoff_stop_id)
-    ]);
-
     if (!pickupStop) {
-      console.log('❌ Pickup stop not found:', pickup_stop_id);
       return res.status(404).json({
         status: 'error',
         message: `Pickup stop not found: ${pickup_stop_id}`,
@@ -133,7 +93,6 @@ exports.createBooking = async (req, res) => {
     }
 
     if (!dropoffStop) {
-      console.log('❌ Dropoff stop not found:', dropoff_stop_id);
       return res.status(404).json({
         status: 'error',
         message: `Dropoff stop not found: ${dropoff_stop_id}`,
@@ -144,13 +103,8 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    console.log('✅ Stops found:', {
-      pickup: { id: pickupStop.stop_id, name: pickupStop.stop_name },
-      dropoff: { id: dropoffStop.stop_id, name: dropoffStop.stop_name }
-    });
 
     // Step 3: Check if fare exists
-    console.log('🔍 Checking fare for route and stops...');
     const fare = await Fare.findOne({
       where: {
         route_id: trip.Route.route_id,

@@ -194,7 +194,8 @@ exports.register = async (req, res) => {
 // Enhanced login supporting both phone and email
 exports.login = async (req, res) => {
   try {
-    const { identifier, password, remember_me = false } = req.body; // identifier can be phone or email
+    const { identifier, password, remember_me = false } = req.body;
+    // identifier can be phone or email
 
     if (!identifier || !password) {
       return res.status(400).json({
@@ -218,6 +219,8 @@ exports.login = async (req, res) => {
         }
       ]
     });
+
+    console.log(user, "=============");
 
     if (!user) {
       return res.status(404).json({
