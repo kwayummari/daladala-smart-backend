@@ -343,7 +343,7 @@ exports.searchRoutes = async (req, res) => {
 // Get fare between specific stops
 exports.getFareBetweenStops = async (req, res) => {
   try {
-    const { route_id, start_stop_id, end_stop_id, fare_type = 'standard' } = req.query;
+    const { route_id, start_stop_id, end_stop_id, fare_type = 'regular' } = req.query;
 
     // Validate required parameters
     if (!route_id || !start_stop_id || !end_stop_id) {
@@ -362,7 +362,7 @@ exports.getFareBetweenStops = async (req, res) => {
       });
     }
 
-    // Get fare information
+    // Get fare information from fare table first
     const fare = await Fare.findOne({
       where: {
         route_id: parseInt(route_id),
@@ -386,8 +386,8 @@ exports.getFareBetweenStops = async (req, res) => {
     });
 
     if (!fare) {
-      // If no specific fare found, calculate based on distance or use base fare
-      // Get stop order information
+      // If no specific fare found, calculate based on actual distance
+      // Verify stops are part of this route
       const startStopInfo = await RouteStop.findOne({
         where: {
           route_id: parseInt(route_id),
@@ -409,17 +409,41 @@ exports.getFareBetweenStops = async (req, res) => {
         });
       }
 
-      // Calculate fare based on distance or number of stops
-      const stopDifference = Math.abs(endStopInfo.stop_order - startStopInfo.stop_order);
-      const estimatedFare = route.base_fare + (stopDifference * 200); // 200 TZS per stop difference
-
-      // Get stop details
+      // Get stop details with coordinates
       const startStop = await Stop.findByPk(start_stop_id, {
         attributes: ['stop_id', 'stop_name', 'latitude', 'longitude']
       });
+
       const endStop = await Stop.findByPk(end_stop_id, {
         attributes: ['stop_id', 'stop_name', 'latitude', 'longitude']
       });
+
+      // Calculate actual distance using Haversine formula
+      function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Earth's radius in kilometers
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c; // Distance in kilometers
+      }
+
+      const distanceKm = calculateDistance(
+        parseFloat(startStop.latitude),
+        parseFloat(startStop.longitude),
+        parseFloat(endStop.latitude),
+        parseFloat(endStop.longitude)
+      );
+
+      // Hardcoded fare calculation values (from your fare_calculator table)
+      const baseFare = 2000; // Base fare in TZS
+      const pricePerKm = 200; // Price per kilometer in TZS
+      const minimumFare = 500; // Minimum fare in TZS
+
+      const calculatedFare = baseFare + (distanceKm * pricePerKm);
+      const finalFare = Math.max(calculatedFare, minimumFare); // Ensure minimum fare
 
       return res.status(200).json({
         status: 'success',
@@ -429,16 +453,19 @@ exports.getFareBetweenStops = async (req, res) => {
           start_stop_id: parseInt(start_stop_id),
           end_stop_id: parseInt(end_stop_id),
           fare_type: fare_type,
-          amount: estimatedFare,
+          amount: Math.round(finalFare), // Round to nearest TZS
           currency: 'TZS',
           is_estimated: true,
+          distance_km: Math.round(distanceKm * 100) / 100, // Round to 2 decimal places
+          base_fare: baseFare,
+          price_per_km: pricePerKm,
           startStop: startStop,
-          endStop: endStop,
-          stop_difference: stopDifference
+          endStop: endStop
         }
       });
     }
 
+    // If fare exists in database, return it
     res.status(200).json({
       status: 'success',
       data: {

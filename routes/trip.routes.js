@@ -49,6 +49,7 @@ const setDriverId = (req, res, next) => {
 
 // Public routes (work with or without authentication)
 router.get('/upcoming', optionalAuth, tripController.getUpcomingTrips);
+router.get('/upcoming2', optionalAuth, tripController.getUpcomingTrips2);
 router.get('/route/:route_id', tripController.getTripsByRoute);
 
 // Protected routes (require authentication)

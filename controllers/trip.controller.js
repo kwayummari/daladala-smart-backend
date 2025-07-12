@@ -16,7 +16,6 @@ exports.getUpcomingTrips = async (req, res) => {
   try {
     const userId = req.userId; // From JWT middleware (might be undefined for public access)
     const { route_id, limit = 10 } = req.query;
-
     let whereClause = {
       start_time: {
         [Op.gte]: new Date() // Only future trips
@@ -156,6 +155,94 @@ exports.getUpcomingTrips = async (req, res) => {
           return {
             ...trip.toJSON(),
             available_seats: 0,
+            occupied_seats: 0
+          };
+        }
+      })
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: tripsWithSeats
+    });
+  } catch (error) {
+    console.error('Error fetching upcoming trips:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
+exports.getUpcomingTrips2 = async (req, res) => {
+  try {
+    const { route_id, limit = 10 } = req.query;
+
+    let whereClause = {
+      start_time: {
+        [Op.gte]: new Date() // Only future trips
+      },
+      status: {
+        [Op.in]: ['scheduled', 'active', 'in_progress']
+      }
+    };
+
+    // If route_id is provided, filter by route
+    if (route_id) {
+      whereClause.route_id = route_id;
+    }
+
+    const trips = await Trip.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: Route,
+          attributes: ['route_id', 'route_number', 'route_name', 'start_point', 'end_point', 'distance_km', 'estimated_time_minutes']
+        },
+        {
+          model: Vehicle,
+          attributes: ['vehicle_id', 'plate_number', 'vehicle_type', 'capacity', 'color', 'is_air_conditioned']
+        },
+        {
+          model: Driver,
+          attributes: ['driver_id', 'rating', 'total_ratings'],
+          include: [{
+            model: User,
+            attributes: ['first_name', 'last_name', 'profile_picture']
+          }]
+        }
+      ],
+      order: [['start_time', 'ASC']],
+      limit: parseInt(limit)
+    });
+    // Add available seats information
+    const tripsWithSeats = await Promise.all(
+      trips.map(async (trip) => {
+        try {
+          const totalPassengers = await Booking.sum('passenger_count', {
+            where: {
+              trip_id: trip.trip_id,
+              status: {
+                [Op.in]: ['confirmed', 'paid']
+              }
+            }
+          }) || 0;
+
+          const passengerCount = totalPassengers === null ? 0 : Number(totalPassengers);
+          // FIX: Ensure capacity is a number
+          const vehicleCapacity = parseInt(trip.Vehicle.capacity) || 30;
+          const availableSeats = vehicleCapacity - passengerCount;
+
+          return {
+            ...trip.toJSON(),
+            available_seats: Math.max(0, availableSeats),
+            occupied_seats: passengerCount
+          };
+        } catch (seatError) {
+          console.error('Error calculating seats for trip:', seatError);
+          return {
+            ...trip.toJSON(),
+            available_seats: 30, // Default fallback
             occupied_seats: 0
           };
         }
@@ -563,7 +650,6 @@ exports.updateVehicleLocation = async (req, res) => {
         last_driver_update: new Date()
       });
     } catch (updateError) {
-      console.log('Trip location fields may not exist yet, skipping trip update');
     }
 
     res.status(200).json({
@@ -770,8 +856,6 @@ exports.updateDriverLocation = async (req, res) => {
 exports.getDriverTrips = async (req, res) => {
   try {
     const driverId = req.driverId || req.userId;
-
-    console.log(req.driverId, req.userId, "============");
     const { status } = req.query;
 
     if (!driverId) {
@@ -780,8 +864,6 @@ exports.getDriverTrips = async (req, res) => {
         message: 'Driver ID is required'
       });
     }
-
-    console.log(`Fetching trips for driver: ${driverId}, status: ${status}`);
 
     const whereCondition = { driver_id: driverId };
     if (status && status !== 'all') {
@@ -811,8 +893,6 @@ exports.getDriverTrips = async (req, res) => {
       order: [['start_time', 'DESC']],
       limit: 50
     });
-
-    console.log(trips, "==========");
 
     // Calculate passenger count for each trip
     const tripsWithPassengers = await Promise.all(
