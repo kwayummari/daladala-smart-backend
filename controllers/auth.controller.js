@@ -54,6 +54,8 @@ exports.register = async (req, res) => {
       national_id // Required field
     } = req.body;
 
+    console.log(req.body);
+
     // Validate national ID
     if (!national_id || national_id.length < 10) {
       return res.status(400).json({

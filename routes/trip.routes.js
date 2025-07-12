@@ -49,7 +49,6 @@ const setDriverId = (req, res, next) => {
 
 // Public routes (work with or without authentication)
 router.get('/upcoming', optionalAuth, tripController.getUpcomingTrips);
-router.get('/:id', tripController.getTripDetails);
 router.get('/route/:route_id', tripController.getTripsByRoute);
 
 // Protected routes (require authentication)
@@ -65,7 +64,7 @@ if (typeof tripController.updateVehicleLocation === 'function') {
 }
 
 // Alternative: If you want to group driver routes under /driver
-router.get('/driver/my-trips', authMiddleware.verifyToken, setDriverId, tripController.getDriverTrips);
+router.get('/driver', authMiddleware.verifyToken, setDriverId, tripController.getDriverTrips);
 router.post('/driver/:id/start', authMiddleware.verifyToken, setDriverId, tripController.startTrip);
 router.post('/driver/:id/end', authMiddleware.verifyToken, setDriverId, tripController.endTrip);
 router.post('/driver/location/update', authMiddleware.verifyToken, setDriverId, tripController.updateDriverLocation);
@@ -73,5 +72,7 @@ router.post('/driver/location/update', authMiddleware.verifyToken, setDriverId, 
 // Alternative: If you want to group passenger routes under /passenger
 router.get('/passenger/my-trips', authMiddleware.verifyToken, tripController.getPassengerTrips);
 router.get('/passenger/:id/track', authMiddleware.verifyToken, tripController.getLiveTripLocation);
+
+router.get('/:id', tripController.getTripDetails);
 
 module.exports = router;

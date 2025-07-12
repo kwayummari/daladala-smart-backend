@@ -582,54 +582,42 @@ exports.updateVehicleLocation = async (req, res) => {
 exports.startTrip = async (req, res) => {
   try {
     const { id } = req.params;
-    const driverId = req.driverId || req.userId; // Get driver ID from middleware
+    const driverId = req.driverId || req.userId;
 
     const trip = await Trip.findOne({
       where: {
         trip_id: id,
-        driver_id: driverId,
-        status: 'scheduled'
-      },
-      include: [
-        {
-          model: Route,
-          attributes: ['route_name']
-        },
-        {
-          model: Vehicle,
-          attributes: ['plate_number']
-        }
-      ]
+        driver_id: driverId
+      }
     });
 
     if (!trip) {
       return res.status(404).json({
         status: 'error',
-        message: 'Trip not found or cannot be started'
+        message: 'Trip not found or not assigned to this driver'
       });
     }
 
-    // Update trip status to in_progress
+    if (trip.status !== 'scheduled') {
+      return res.status(400).json({
+        status: 'error',
+        message: `Cannot start trip. Current status: ${trip.status}`
+      });
+    }
+
     await trip.update({
       status: 'in_progress',
+      // Set actual start time if different from scheduled
       start_time: new Date()
     });
-
-    // Mark driver as unavailable
-    await Driver.update(
-      { is_available: false },
-      { where: { driver_id: driverId } }
-    );
 
     res.status(200).json({
       status: 'success',
       message: 'Trip started successfully',
       data: {
-        trip_id: id,
-        route_name: trip.Route?.route_name,
-        vehicle_plate: trip.Vehicle?.plate_number,
-        status: 'in_progress',
-        started_at: new Date()
+        trip_id: trip.trip_id,
+        status: trip.status,
+        start_time: trip.start_time
       }
     });
 
@@ -652,55 +640,47 @@ exports.endTrip = async (req, res) => {
     const trip = await Trip.findOne({
       where: {
         trip_id: id,
-        driver_id: driverId,
-        status: 'in_progress'
+        driver_id: driverId
       }
     });
 
     if (!trip) {
       return res.status(404).json({
         status: 'error',
-        message: 'Trip not found or cannot be ended'
+        message: 'Trip not found or not assigned to this driver'
       });
     }
 
-    // Calculate actual duration
-    const startTime = new Date(trip.start_time);
-    const endTime = new Date();
-    const actualDuration = Math.round((endTime - startTime) / (1000 * 60)); // minutes
+    if (trip.status !== 'in_progress') {
+      return res.status(400).json({
+        status: 'error',
+        message: `Cannot end trip. Current status: ${trip.status}`
+      });
+    }
 
-    // Update trip
     await trip.update({
       status: 'completed',
-      end_time: endTime,
-      actual_duration: actualDuration
+      end_time: new Date()
     });
 
-    // Mark driver as available
-    await Driver.update(
-      { is_available: true },
-      { where: { driver_id: driverId } }
-    );
-
-    // Update all bookings for this trip to completed
+    // Update all associated bookings to completed
     await Booking.update(
       { status: 'completed' },
       {
         where: {
           trip_id: id,
-          status: ['confirmed', 'in_progress']
+          status: 'in_progress'
         }
       }
     );
 
     res.status(200).json({
       status: 'success',
-      message: 'Trip completed successfully',
+      message: 'Trip ended successfully',
       data: {
-        trip_id: id,
-        status: 'completed',
-        ended_at: endTime,
-        duration_minutes: actualDuration
+        trip_id: trip.trip_id,
+        status: trip.status,
+        end_time: trip.end_time
       }
     });
 
@@ -717,7 +697,7 @@ exports.endTrip = async (req, res) => {
 // Update driver location during trip - ADD THIS
 exports.updateDriverLocation = async (req, res) => {
   try {
-    const { latitude, longitude } = req.body;
+    const { latitude, longitude, heading, speed } = req.body;
     const driverId = req.driverId || req.userId;
 
     if (!latitude || !longitude) {
@@ -727,22 +707,7 @@ exports.updateDriverLocation = async (req, res) => {
       });
     }
 
-    // Update driver's current location (if you have these fields)
-    try {
-      await Driver.update(
-        {
-          current_latitude: latitude,
-          current_longitude: longitude,
-          last_location_update: new Date(),
-          is_tracking_enabled: true
-        },
-        { where: { driver_id: driverId } }
-      );
-    } catch (driverUpdateError) {
-      console.log('Driver location fields may not exist yet, skipping driver update');
-    }
-
-    // Get active trip for this driver
+    // Find active trip for this driver
     const activeTrip = await Trip.findOne({
       where: {
         driver_id: driverId,
@@ -750,36 +715,44 @@ exports.updateDriverLocation = async (req, res) => {
       }
     });
 
-    if (activeTrip) {
-      // Update trip with driver location (if you have these fields)
-      try {
-        await activeTrip.update({
-          driver_latitude: latitude,
-          driver_longitude: longitude,
-          last_driver_update: new Date()
-        });
-      } catch (tripUpdateError) {
-        console.log('Trip location fields may not exist yet, skipping trip update');
-      }
+    if (!activeTrip) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'No active trip found for location update'
+      });
+    }
 
-      // Save to vehicle_locations table for history
-      await db.VehicleLocation.create({
+    // Update trip with driver location
+    await activeTrip.update({
+      driver_latitude: latitude,
+      driver_longitude: longitude,
+      last_driver_update: new Date()
+    });
+
+    // Also create vehicle location record
+    try {
+      await VehicleLocation.create({
         vehicle_id: activeTrip.vehicle_id,
         trip_id: activeTrip.trip_id,
-        latitude: latitude,
-        longitude: longitude,
-        speed: 0,
+        latitude,
+        longitude,
+        heading: heading || null,
+        speed: speed || null,
         recorded_at: new Date()
       });
+    } catch (locationError) {
+      console.warn('Could not create vehicle location record:', locationError.message);
+      // Don't fail the request if location recording fails
     }
 
     res.status(200).json({
       status: 'success',
       message: 'Location updated successfully',
       data: {
-        driver_id: driverId,
-        location: { latitude, longitude },
-        last_update: new Date()
+        trip_id: activeTrip.trip_id,
+        latitude,
+        longitude,
+        updated_at: new Date()
       }
     });
 
@@ -797,10 +770,21 @@ exports.updateDriverLocation = async (req, res) => {
 exports.getDriverTrips = async (req, res) => {
   try {
     const driverId = req.driverId || req.userId;
+
+    console.log(req.driverId, req.userId, "============");
     const { status } = req.query;
 
+    if (!driverId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Driver ID is required'
+      });
+    }
+
+    console.log(`Fetching trips for driver: ${driverId}, status: ${status}`);
+
     const whereCondition = { driver_id: driverId };
-    if (status) {
+    if (status && status !== 'all') {
       whereCondition.status = status;
     }
 
@@ -809,58 +793,59 @@ exports.getDriverTrips = async (req, res) => {
       include: [
         {
           model: Route,
-          attributes: ['route_name', 'route_number']
+          attributes: ['route_id', 'route_number', 'route_name', 'start_point', 'end_point']
         },
         {
           model: Vehicle,
-          attributes: ['plate_number', 'vehicle_type']
+          attributes: ['vehicle_id', 'plate_number', 'vehicle_type', 'capacity']
         },
         {
-          model: Booking,
-          include: [
-            {
-              model: User,
-              attributes: ['first_name', 'last_name', 'phone']
-            },
-            {
-              model: Stop,
-              as: 'pickupStop',
-              attributes: ['stop_name']
-            },
-            {
-              model: Stop,
-              as: 'dropoffStop',
-              attributes: ['stop_name']
-            }
-          ]
+          model: Driver,
+          attributes: ['driver_id', 'rating'],
+          include: [{
+            model: User,
+            attributes: ['first_name', 'last_name']
+          }]
         }
       ],
       order: [['start_time', 'DESC']],
-      limit: 20
+      limit: 50
     });
 
-    const formattedTrips = trips.map(trip => ({
-      trip_id: trip.trip_id,
-      route_name: trip.Route?.route_name,
-      vehicle_plate: trip.Vehicle?.plate_number,
-      start_time: trip.start_time,
-      end_time: trip.end_time,
-      status: trip.status,
-      passenger_count: trip.Bookings?.length || 0,
-      passengers: trip.Bookings?.map(booking => ({
-        booking_id: booking.booking_id,
-        passenger_name: `${booking.User?.first_name} ${booking.User?.last_name}`,
-        passenger_phone: booking.User?.phone,
-        pickup_stop: booking.pickupStop?.stop_name,
-        dropoff_stop: booking.dropoffStop?.stop_name,
-        seat_numbers: booking.seat_numbers
-      })) || []
-    }));
+    console.log(trips, "==========");
+
+    // Calculate passenger count for each trip
+    const tripsWithPassengers = await Promise.all(
+      trips.map(async (trip) => {
+        const passengerCount = await Booking.sum('passenger_count', {
+          where: {
+            trip_id: trip.trip_id,
+            status: {
+              [Op.in]: ['confirmed', 'paid', 'in_progress']
+            }
+          }
+        }) || 0;
+
+        return {
+          trip_id: trip.trip_id,
+          route_name: trip.Route?.route_name || 'Unknown Route',
+          route_number: trip.Route?.route_number || 'N/A',
+          vehicle_plate: trip.Vehicle?.plate_number || 'Unknown',
+          start_time: trip.start_time,
+          end_time: trip.end_time,
+          status: trip.status,
+          passenger_count: passengerCount,
+          Route: trip.Route,
+          Vehicle: trip.Vehicle,
+          Driver: trip.Driver
+        };
+      })
+    );
 
     res.status(200).json({
       status: 'success',
       data: {
-        trips: formattedTrips,
+        trips: tripsWithPassengers,
         total: trips.length
       }
     });

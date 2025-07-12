@@ -1,3 +1,4 @@
+// models/trip.model.js
 module.exports = (sequelize, DataTypes) => {
   const Trip = sequelize.define('Trip', {
     trip_id: {
@@ -78,19 +79,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'scheduled'
     },
-    estimated_duration: {
-      type: DataTypes.INTEGER,
-      allowNull: true
-    },
-    actual_duration: {
-      type: DataTypes.INTEGER,
-      allowNull: true
-    },
-    trip_type: {
-      type: DataTypes.ENUM('scheduled', 'on_demand'),
-      allowNull: false,
-      defaultValue: 'scheduled'
-    },
+    // REMOVED: estimated_duration, actual_duration, trip_type
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
@@ -113,59 +102,44 @@ module.exports = (sequelize, DataTypes) => {
   });
 
   Trip.associate = function (models) {
-    Trip.belongsTo(models.Schedule, {
-      foreignKey: 'schedule_id',
-      as: 'schedule'
-    });
-
     Trip.belongsTo(models.Route, {
       foreignKey: 'route_id',
-      as: 'route'
+      as: 'Route'
     });
 
     Trip.belongsTo(models.Vehicle, {
       foreignKey: 'vehicle_id',
-      as: 'vehicle'
+      as: 'Vehicle'
     });
 
     Trip.belongsTo(models.Driver, {
       foreignKey: 'driver_id',
-      as: 'driver'
+      as: 'Driver'
+    });
+
+    Trip.belongsTo(models.Schedule, {
+      foreignKey: 'schedule_id',
+      as: 'Schedule'
     });
 
     Trip.belongsTo(models.Stop, {
       foreignKey: 'current_stop_id',
-      as: 'current_stop'
+      as: 'currentStop'
     });
 
     Trip.belongsTo(models.Stop, {
       foreignKey: 'next_stop_id',
-      as: 'next_stop'
+      as: 'nextStop'
     });
 
     Trip.hasMany(models.Booking, {
       foreignKey: 'trip_id',
-      as: 'bookings'
-    });
-
-    Trip.hasMany(models.BookingSeat, {
-      foreignKey: 'trip_id',
-      as: 'seat_bookings'
+      as: 'Bookings'
     });
 
     Trip.hasMany(models.VehicleLocation, {
       foreignKey: 'trip_id',
-      as: 'location_history'
-    });
-
-    Trip.hasMany(models.OnDemandRequest, {
-      foreignKey: 'trip_id',
-      as: 'on_demand_requests'
-    });
-
-    Trip.hasMany(models.PreBooking, {
-      foreignKey: 'trip_id',
-      as: 'pre_bookings'
+      as: 'VehicleLocations'
     });
   };
 
