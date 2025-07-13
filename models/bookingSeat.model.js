@@ -1,4 +1,3 @@
-
 // models/bookingSeat.model.js
 module.exports = (sequelize, DataTypes) => {
     const BookingSeat = sequelize.define('BookingSeat', {
@@ -9,27 +8,23 @@ module.exports = (sequelize, DataTypes) => {
         },
         booking_id: {
             type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: 'bookings',
-                key: 'booking_id'
-            }
+            allowNull: false
         },
         seat_id: {
             type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: 'seats',
-                key: 'seat_id'
-            }
+            allowNull: false
         },
         trip_id: {
             type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: 'trips',
-                key: 'trip_id'
-            }
+            allowNull: false
+        },
+        booking_date: {
+            type: DataTypes.DATEONLY,
+            allowNull: true
+        },
+        booking_reference: {
+            type: DataTypes.STRING(50),
+            allowNull: true
         },
         passenger_name: {
             type: DataTypes.STRING(255),
@@ -37,7 +32,6 @@ module.exports = (sequelize, DataTypes) => {
         },
         is_occupied: {
             type: DataTypes.BOOLEAN,
-            allowNull: false,
             defaultValue: true
         },
         boarded_at: {
@@ -58,31 +52,8 @@ module.exports = (sequelize, DataTypes) => {
         }
     }, {
         tableName: 'booking_seats',
-        timestamps: false,
-        indexes: [
-            {
-                unique: true,
-                fields: ['seat_id', 'trip_id']
-            }
-        ]
+        timestamps: false
     });
 
-    BookingSeat.associate = function (models) {
-        BookingSeat.belongsTo(models.Booking, {
-            foreignKey: 'booking_id',
-            as: 'booking'
-        });
-
-        BookingSeat.belongsTo(models.Seat, {
-            foreignKey: 'seat_id',
-            as: 'seat'
-        });
-
-        BookingSeat.belongsTo(models.Trip, {
-            foreignKey: 'trip_id',
-            as: 'trip'
-        });
-    };
-
     return BookingSeat;
-};
+  };

@@ -5,6 +5,27 @@ const { Booking, Trip, Stop, User, Fare, Notification, PreBooking, Seat, Booking
 const QRCode = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 
+const calculateFareWithDateRange = (baseFare, passengerCount, dateRange, totalDays = 1) => {
+  let dailyFare = baseFare * passengerCount;
+  let multiplier = 1.0;
+
+  switch (dateRange) {
+    case 'week':
+      multiplier = totalDays * 0.95; // 5% discount for weekly
+      break;
+    case 'month':
+      multiplier = totalDays * 0.85; // 15% discount for monthly
+      break;
+    case '3months':
+      multiplier = totalDays * 0.75; // 25% discount for 3 months
+      break;
+    default:
+      multiplier = totalDays;
+  }
+
+  return dailyFare * multiplier;
+};
+
 // Helper function to generate unique booking reference (XAMPP compatible)
 const generateBookingReference = async (userId, transaction) => {
   let reference;
@@ -12,24 +33,40 @@ const generateBookingReference = async (userId, transaction) => {
   let attempts = 0;
 
   while (exists && attempts < 10) {
-    // Use sequence table for uniqueness
-    const [result] = await db.sequelize.query(
-      'INSERT INTO booking_reference_sequence () VALUES (); SELECT LAST_INSERT_ID() as id;',
-      { transaction }
-    );
+    try {
+      // Create a sequence entry first
+      const [result] = await db.sequelize.query(
+        'INSERT INTO booking_reference_sequence () VALUES ()',
+        { transaction }
+      );
 
-    const sequenceId = result[0].id;
-    const timestamp = Date.now().toString().slice(-8); // Last 8 digits of timestamp
-    reference = `BOOK_${timestamp}_${userId}_${sequenceId}`;
+      // Get the last insert ID in a separate query
+      const [sequenceResult] = await db.sequelize.query(
+        'SELECT LAST_INSERT_ID() as id',
+        {
+          type: db.sequelize.QueryTypes.SELECT,
+          transaction
+        }
+      );
 
-    // Check if reference already exists (very unlikely but good to check)
-    const existingBooking = await Booking.findOne({
-      where: { booking_reference: reference },
-      transaction
-    });
+      const sequenceId = sequenceResult.id;
+      const timestamp = Date.now().toString().slice(-8); // Last 8 digits of timestamp
+      reference = `BOOK_${timestamp}_${userId}_${sequenceId}`;
 
-    exists = !!existingBooking;
-    attempts++;
+      // Check if reference already exists (very unlikely but good to check)
+      const existingBooking = await Booking.findOne({
+        where: { booking_reference: reference },
+        transaction
+      });
+
+      exists = !!existingBooking;
+      attempts++;
+    } catch (error) {
+      console.error('Error generating booking reference:', error);
+      // Fallback to UUID-based reference
+      reference = `BOOK_${Date.now()}_${userId}_${Math.floor(Math.random() * 10000)}`;
+      exists = false;
+    }
   }
 
   if (exists) {
@@ -74,55 +111,84 @@ const reserveSeatsForBooking = async (bookingId, tripId, seatNumbers, passengerN
     const seatNumber = seatNumbers[i];
     const passengerName = passengerNames[i] || `Passenger ${i + 1}`;
 
-    // Find the seat using a direct query
-    const [seatResults] = await db.sequelize.query(
-      `SELECT s.seat_id, s.seat_number, s.is_available 
-       FROM seats s 
-       JOIN trips t ON s.vehicle_id = t.vehicle_id 
-       WHERE t.trip_id = ? AND s.seat_number = ? AND s.is_available = 1 LIMIT 1`,
-      {
-        replacements: [tripId, seatNumber],
-        type: db.sequelize.QueryTypes.SELECT,
-        transaction
+    try {
+      console.log(`🔍 Looking for seat ${seatNumber} for trip ${tripId}`);
+
+      // Find the seat using a direct query with better error handling
+      const seatResults = await db.sequelize.query(
+        `SELECT s.seat_id, s.seat_number, s.is_available 
+         FROM seats s 
+         JOIN trips t ON s.vehicle_id = t.vehicle_id 
+         WHERE t.trip_id = ? AND s.seat_number = ? AND s.is_available = 1 LIMIT 1`,
+        {
+          replacements: [tripId, seatNumber],
+          type: db.sequelize.QueryTypes.SELECT,
+          transaction
+        }
+      );
+
+      console.log(`🔍 Seat query results for ${seatNumber}:`, seatResults);
+
+      if (!seatResults || seatResults.length === 0) {
+        // Let's check if the seat exists at all
+        const allSeatsForTrip = await db.sequelize.query(
+          `SELECT s.seat_id, s.seat_number, s.is_available, t.vehicle_id
+           FROM seats s 
+           JOIN trips t ON s.vehicle_id = t.vehicle_id 
+           WHERE t.trip_id = ? LIMIT 10`,
+          {
+            replacements: [tripId],
+            type: db.sequelize.QueryTypes.SELECT,
+            transaction
+          }
+        );
+
+        console.log(`🔍 Available seats for trip ${tripId}:`, allSeatsForTrip);
+        throw new Error(`Seat ${seatNumber} is not available. Available seats: ${allSeatsForTrip.map(s => s.seat_number).join(', ')}`);
       }
-    );
 
-    if (!seatResults) {
-      throw new Error(`Seat ${seatNumber} is not available`);
-    }
+      const seatData = seatResults[0];
+      console.log(`✅ Found seat data:`, seatData);
 
-    // Check if seat is already booked for this trip and date
-    const existingBooking = await BookingSeat.findOne({
-      where: {
-        seat_id: seatResults.seat_id,
+      // Check if seat is already booked for this trip and date
+      const existingBooking = await db.BookingSeat.findOne({
+        where: {
+          seat_id: seatData.seat_id,
+          trip_id: tripId,
+          booking_date: bookingDate,
+          is_occupied: true
+        },
+        transaction
+      });
+
+      if (existingBooking) {
+        throw new Error(`Seat ${seatNumber} is already reserved for this trip on ${bookingDate}`);
+      }
+
+      // Reserve the seat
+      const bookingSeat = await db.BookingSeat.create({
+        booking_id: bookingId,
+        seat_id: seatData.seat_id,
         trip_id: tripId,
         booking_date: bookingDate,
+        booking_reference: bookingReference,
+        passenger_name: passengerName,
         is_occupied: true
-      },
-      transaction
-    });
+      }, { transaction });
 
-    if (existingBooking) {
-      throw new Error(`Seat ${seatNumber} is already reserved for this trip on ${bookingDate}`);
+      reservedSeats.push({
+        booking_seat_id: bookingSeat.booking_seat_id,
+        seat_id: seatData.seat_id,
+        seat_number: seatNumber,
+        passenger_name: passengerName
+      });
+
+      console.log(`✅ Reserved seat ${seatNumber} for ${passengerName}`);
+
+    } catch (seatError) {
+      console.error(`❌ Error reserving seat ${seatNumber}:`, seatError);
+      throw new Error(`Failed to reserve seat ${seatNumber}: ${seatError.message}`);
     }
-
-    // Reserve the seat
-    const bookingSeat = await BookingSeat.create({
-      booking_id: bookingId,
-      seat_id: seatResults.seat_id,
-      trip_id: tripId,
-      booking_date: bookingDate,
-      booking_reference: bookingReference,
-      passenger_name: passengerName,
-      is_occupied: true
-    }, { transaction });
-
-    reservedSeats.push({
-      booking_seat_id: bookingSeat.booking_seat_id,
-      seat_id: seatResults.seat_id,
-      seat_number: seatNumber,
-      passenger_name: passengerName
-    });
   }
 
   return reservedSeats;
@@ -346,17 +412,20 @@ exports.createMultipleBookings = async (req, res) => {
   try {
     const {
       bookings_data,
-      is_multi_day = true,
-      date_range = 'week'
+      is_multi_day = false,
+      date_range = 'single',
+      total_days = 1
     } = req.body;
 
     console.log('📝 Creating multiple bookings:', {
       count: bookings_data?.length,
       is_multi_day,
       date_range,
+      total_days,
       userId: req.userId
     });
 
+    // Validation
     if (!bookings_data || !Array.isArray(bookings_data) || bookings_data.length === 0) {
       await transaction.rollback();
       return res.status(400).json({
@@ -377,6 +446,8 @@ exports.createMultipleBookings = async (req, res) => {
     const bookingReference = await generateBookingReference(req.userId, transaction);
     const createdBookings = [];
     let totalFare = 0;
+    let baseFareAmount = 2000.0
+    
 
     for (const [index, bookingData] of bookings_data.entries()) {
       console.log(`📋 Processing booking ${index + 1}/${bookings_data.length}:`, bookingData);
@@ -392,9 +463,12 @@ exports.createMultipleBookings = async (req, res) => {
       } = bookingData;
 
       // Validate required fields
-      if (!trip_id || !pickup_stop_id || !dropoff_stop_id || !travel_date) {
-        throw new Error(`Booking ${index + 1}: Missing required fields (trip_id, pickup_stop_id, dropoff_stop_id, travel_date)`);
+      if (!trip_id || !pickup_stop_id || !dropoff_stop_id) {
+        throw new Error(`Booking ${index + 1}: Missing required fields (trip_id, pickup_stop_id, dropoff_stop_id)`);
       }
+
+      // Set travel date - use provided date or current date
+      const bookingTravelDate = travel_date || new Date().toISOString().split('T')[0];
 
       // Validate seat selection if provided
       if (seat_numbers.length > 0 && seat_numbers.length !== passenger_count) {
@@ -407,7 +481,10 @@ exports.createMultipleBookings = async (req, res) => {
           trip_id,
           status: { [Op.in]: ['scheduled', 'in_progress'] }
         },
-        include: [{ model: db.Route }],
+        include: [{
+          model: db.Route,
+          attributes: ['route_id', 'route_name', 'start_point', 'end_point']
+        }],
         transaction
       });
 
@@ -422,11 +499,9 @@ exports.createMultipleBookings = async (req, res) => {
       ]);
 
       if (!pickupStop || !dropoffStop) {
-        throw new Error(`Booking ${index + 1}: Invalid stops for trip ${trip_id}`);
+        throw new Error(`Booking ${index + 1}: Invalid pickup or dropoff stops`);
       }
 
-      // Calculate fare
-      let fareAmount = 2000.0;
       try {
         const fare = await Fare.findOne({
           where: {
@@ -436,15 +511,30 @@ exports.createMultipleBookings = async (req, res) => {
           },
           transaction
         });
-        if (fare) fareAmount = fare.amount;
+        if (fare) baseFareAmount = fare.amount;
       } catch (fareError) {
         console.log(`Using default fare for trip ${trip_id}`);
       }
 
-      const bookingFare = fareAmount * passenger_count;
+      // Calculate final fare with date range discounts
+      const bookingFare = calculateFareWithDateRange(
+        baseFareAmount,
+        passenger_count,
+        date_range,
+        total_days
+      );
+
       totalFare += bookingFare;
 
-      // Create booking
+      console.log(`💰 Fare calculation for booking ${index + 1}:`, {
+        baseFare: baseFareAmount,
+        passengerCount: passenger_count,
+        dateRange: date_range,
+        totalDays: total_days,
+        finalFare: bookingFare
+      });
+
+      // Create the booking
       const booking = await Booking.create({
         user_id: req.userId,
         trip_id,
@@ -454,9 +544,9 @@ exports.createMultipleBookings = async (req, res) => {
         fare_amount: bookingFare,
         passenger_count,
         seat_numbers: seat_numbers.length > 0 ? seat_numbers.join(',') : null,
-        booking_type: 'pre_booking',
-        travel_date,
-        is_multi_day: true,
+        booking_type: is_multi_day ? 'pre_booking' : 'regular',
+        travel_date: bookingTravelDate,
+        is_multi_day,
         booking_reference: bookingReference,
         status: 'confirmed',
         payment_status: 'pending'
@@ -470,7 +560,7 @@ exports.createMultipleBookings = async (req, res) => {
           trip_id,
           seat_numbers,
           passenger_names,
-          travel_date,
+          bookingTravelDate,
           bookingReference,
           transaction
         );
@@ -499,11 +589,12 @@ exports.createMultipleBookings = async (req, res) => {
       // Update booking with QR code
       await booking.update({ qr_code_data: qrCodeData }, { transaction });
 
+      // Add to created bookings array
       createdBookings.push({
         booking_id: booking.booking_id,
         booking_reference: booking.booking_reference,
         trip_id,
-        travel_date,
+        travel_date: bookingTravelDate,
         fare_amount: bookingFare,
         passenger_count,
         seat_numbers: seat_numbers,
@@ -520,7 +611,7 @@ exports.createMultipleBookings = async (req, res) => {
         }
       });
 
-      console.log(`✅ Booking ${index + 1} created:`, booking.booking_id);
+      console.log(`✅ Booking ${index + 1} created with ID: ${booking.booking_id}`);
     }
 
     await transaction.commit();
@@ -528,10 +619,18 @@ exports.createMultipleBookings = async (req, res) => {
 
     // Create notification for multiple bookings (outside transaction)
     try {
+      const notificationTitle = createdBookings.length === 1
+        ? 'Booking Created'
+        : 'Multiple Bookings Created';
+
+      const notificationMessage = createdBookings.length === 1
+        ? `Your booking for ${createdBookings[0].route_name} has been confirmed.`
+        : `${createdBookings.length} bookings created successfully for ${date_range}. Total: ${totalFare.toFixed(0)} TZS`;
+
       await Notification.create({
         user_id: req.userId,
-        title: 'Multiple Bookings Created',
-        message: `${createdBookings.length} bookings created successfully for ${date_range}. Total: ${totalFare.toFixed(0)} TZS`,
+        title: notificationTitle,
+        message: notificationMessage,
         type: 'success',
         related_entity: 'booking',
         related_id: createdBookings[0].booking_id
@@ -540,26 +639,43 @@ exports.createMultipleBookings = async (req, res) => {
       console.log('⚠️ Failed to create notification:', notificationError.message);
     }
 
+    // Send response
     res.status(201).json({
       status: 'success',
-      message: 'Multiple bookings created successfully',
+      message: createdBookings.length === 1
+        ? 'Booking created successfully'
+        : 'Multiple bookings created successfully',
       data: {
         booking_reference: bookingReference,
         bookings: createdBookings,
         total_bookings: createdBookings.length,
         total_fare: totalFare,
-        is_multi_day: true,
+        is_multi_day,
         date_range,
+        total_days,
+        fare_breakdown: {
+          base_daily_fare: createdBookings.length > 0 ? baseFareAmount : 0,
+          total_passengers: createdBookings.reduce((sum, b) => sum + b.passenger_count, 0),
+          discount_applied: date_range !== 'single',
+          discount_percentage: date_range === 'week' ? 5 : date_range === 'month' ? 15 : date_range === '3months' ? 25 : 0
+        },
         payment_required: true
       }
     });
 
   } catch (error) {
-    await transaction.rollback();
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
     console.error('❌ Error creating multiple bookings:', error);
     res.status(500).json({
       status: 'error',
-      message: error.message || 'Failed to create multiple bookings'
+      message: error.message || 'Failed to create multiple bookings',
+      debug: {
+        userId: req.userId,
+        bookingsCount: req.body.bookings_data?.length || 0,
+        error: error.toString()
+      }
     });
   }
 };

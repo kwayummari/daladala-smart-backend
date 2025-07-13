@@ -20,6 +20,9 @@ const Notification = require('./notification.model')(sequelize, DataTypes);
 const VehicleLocation = require('./vehicle-location.model')(sequelize, DataTypes);
 const RouteTracking = require('./route-tracking.model')(sequelize, DataTypes);
 
+const Seat = require('./seat.model')(sequelize, DataTypes);
+const BookingSeat = require('./bookingSeat.model')(sequelize, DataTypes);
+
 // Import new wallet models
 const Wallet = require('./wallet.model')(sequelize, DataTypes);
 const WalletTransaction = require('./wallet-transaction.model')(sequelize, DataTypes);
@@ -80,6 +83,9 @@ VehicleLocation.belongsTo(Trip, { foreignKey: 'trip_id' });
 RouteTracking.belongsTo(Trip, { foreignKey: 'trip_id' });
 RouteTracking.belongsTo(Stop, { foreignKey: 'stop_id' });
 
+Vehicle.hasMany(Seat, { foreignKey: 'vehicle_id' });
+Seat.belongsTo(Vehicle, { foreignKey: 'vehicle_id' });
+
 // Define new wallet relationships
 User.hasOne(Wallet, { foreignKey: 'user_id' });
 Wallet.belongsTo(User, { foreignKey: 'user_id' });
@@ -113,6 +119,8 @@ const db = {
   Notification,
   VehicleLocation,
   RouteTracking,
+  Seat,
+  BookingSeat,
   Wallet,
   WalletTransaction
 };
