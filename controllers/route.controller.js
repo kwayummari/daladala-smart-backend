@@ -343,7 +343,8 @@ exports.searchRoutes = async (req, res) => {
 // Get fare between specific stops
 exports.getFareBetweenStops = async (req, res) => {
   try {
-    const { route_id, start_stop_id, end_stop_id, fare_type = 'regular' } = req.query;
+    const { id: route_id } = req.params;
+    const { start_stop_id, end_stop_id, fare_type = 'regular' } = req.query;
 
     // Validate required parameters
     if (!route_id || !start_stop_id || !end_stop_id) {

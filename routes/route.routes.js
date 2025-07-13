@@ -10,7 +10,7 @@ router.get('/search', routeController.searchRoutes);
 router.get('/popular', routeController.getPopularRoutes);
 
 // Get fare between stops - also needs to be before /:id
-router.get('/fare', routeController.getFareBetweenStops);
+router.get('/:id/fare', routeController.getFareBetweenStops);
 
 // Get all routes
 router.get('/', routeController.getAllRoutes);
