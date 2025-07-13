@@ -1,7 +1,7 @@
 // controllers/booking.controller.js - XAMPP COMPATIBLE VERSION
 const { Op, Transaction } = require('sequelize');
 const db = require('../models');
-const { Booking, Trip, Stop, User, Fare, Notification, PreBooking, Seat, BookingSeat } = db;
+const { Booking, Trip, Stop, User, Fare, Notification, Payment, Seat, BookingSeat, Route, Vehicle } = db;
 const QRCode = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 
@@ -417,14 +417,6 @@ exports.createMultipleBookings = async (req, res) => {
       total_days = 1
     } = req.body;
 
-    console.log('📝 Creating multiple bookings:', {
-      count: bookings_data?.length,
-      is_multi_day,
-      date_range,
-      total_days,
-      userId: req.userId
-    });
-
     // Validation
     if (!bookings_data || !Array.isArray(bookings_data) || bookings_data.length === 0) {
       await transaction.rollback();
@@ -450,7 +442,6 @@ exports.createMultipleBookings = async (req, res) => {
     
 
     for (const [index, bookingData] of bookings_data.entries()) {
-      console.log(`📋 Processing booking ${index + 1}/${bookings_data.length}:`, bookingData);
 
       const {
         trip_id,
@@ -525,14 +516,6 @@ exports.createMultipleBookings = async (req, res) => {
       );
 
       totalFare += bookingFare;
-
-      console.log(`💰 Fare calculation for booking ${index + 1}:`, {
-        baseFare: baseFareAmount,
-        passengerCount: passenger_count,
-        dateRange: date_range,
-        totalDays: total_days,
-        finalFare: bookingFare
-      });
 
       // Create the booking
       const booking = await Booking.create({
@@ -610,13 +593,9 @@ exports.createMultipleBookings = async (req, res) => {
           stop_name: dropoffStop.stop_name
         }
       });
-
-      console.log(`✅ Booking ${index + 1} created with ID: ${booking.booking_id}`);
     }
 
     await transaction.commit();
-    console.log('✅ All bookings committed to database');
-
     // Create notification for multiple bookings (outside transaction)
     try {
       const notificationTitle = createdBookings.length === 1
@@ -683,31 +662,39 @@ exports.createMultipleBookings = async (req, res) => {
 // Get user bookings with enhanced details
 exports.getUserBookings = async (req, res) => {
   try {
-    const { status, booking_type, travel_date, is_multi_day } = req.query;
+    const { status, page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
 
-    let whereClause = {
-      user_id: req.userId
-    };
+    console.log('📝 getUserBookings called with status:', status);
 
+    // Build where conditions
+    const whereConditions = { user_id: req.userId };
     if (status) {
-      whereClause.status = status;
+      const statusArray = status.split(',').map(s => s.trim());
+      console.log('📝 Status array:', statusArray);
+      whereConditions.status = { [Op.in]: statusArray }; // ✅ Fixed: Use Op.in
     }
 
-    if (booking_type) {
-      whereClause.booking_type = booking_type;
-    }
-
-    if (travel_date) {
-      whereClause.travel_date = travel_date;
-    }
-
-    if (is_multi_day !== undefined) {
-      whereClause.is_multi_day = is_multi_day === 'true';
-    }
+    console.log('📝 Where conditions:', whereConditions);
 
     const bookings = await Booking.findAll({
-      where: whereClause,
+      where: whereConditions,
       include: [
+        {
+          model: Trip,
+          include: [
+            {
+              model: Route,
+              attributes: ['route_id', 'route_name', 'start_point', 'end_point']
+            },
+            {
+              model: Vehicle,
+              attributes: ['plate_number', 'vehicle_type', 'color'],
+              required: false
+            }
+          ],
+          attributes: ['trip_id', 'start_time', 'end_time', 'status']
+        },
         {
           model: Stop,
           as: 'pickupStop',
@@ -719,69 +706,73 @@ exports.getUserBookings = async (req, res) => {
           attributes: ['stop_id', 'stop_name', 'latitude', 'longitude']
         },
         {
-          model: BookingSeat,
-          as: 'booking_seats',
-          include: [{
-            model: Seat,
-            attributes: ['seat_id', 'seat_number', 'seat_type']
-          }],
-          attributes: ['booking_seat_id', 'passenger_name', 'is_occupied', 'boarded_at', 'alighted_at']
+          model: Payment,
+          as: 'Payments', // ✅ Correct capitalization
+          attributes: ['payment_id', 'amount', 'status', 'payment_method'],
+          required: false
         }
       ],
-      order: [['booking_time', 'DESC']]
+      order: [['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset: parseInt(offset)
     });
 
-    // Group multi-day bookings by booking_reference
-    const groupedBookings = {};
-    const singleBookings = [];
+    console.log('📝 Found bookings:', bookings.length);
 
-    bookings.forEach(booking => {
-      if (booking.is_multi_day && booking.booking_reference) {
-        if (!groupedBookings[booking.booking_reference]) {
-          groupedBookings[booking.booking_reference] = {
-            booking_reference: booking.booking_reference,
-            bookings: [],
-            total_fare: 0,
-            total_bookings: 0,
-            date_range: null,
-            is_multi_day: true
-          };
-        }
+    // Process bookings data
+    const processedBookings = bookings.map(booking => ({
+      ...booking.toJSON(),
+      qr_code: booking.qr_code_data,
+      total_fare: booking.fare_amount * booking.passenger_count
+    }));
 
-        groupedBookings[booking.booking_reference].bookings.push({
-          ...booking.toJSON(),
-          seat_details: booking.booking_seats,
-          qr_code: booking.qr_code_data
-        });
-        groupedBookings[booking.booking_reference].total_fare += parseFloat(booking.fare_amount);
-        groupedBookings[booking.booking_reference].total_bookings += 1;
-      } else {
-        singleBookings.push({
-          ...booking.toJSON(),
-          seat_details: booking.booking_seats,
-          qr_code: booking.qr_code_data
-        });
-      }
-    });
-
+    // ✅ ADD statusCode to response
     res.status(200).json({
+      statusCode: 200, // ✅ Required by mobile app
       status: 'success',
       data: {
-        single_bookings: singleBookings,
-        multi_day_bookings: Object.values(groupedBookings),
-        total_single: singleBookings.length,
-        total_multi_day_groups: Object.keys(groupedBookings).length
+        bookings: processedBookings,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: bookings.length,
+          has_more: bookings.length === parseInt(limit)
+        }
       }
     });
 
   } catch (error) {
     console.error('❌ Error getting user bookings:', error);
     res.status(500).json({
+      statusCode: 500, // ✅ Add statusCode to error response too
       status: 'error',
       message: 'Failed to fetch user bookings'
     });
   }
 };
+
+function categorizeBooking(booking) {
+  const now = new Date();
+  const travelDate = booking.travel_date || booking.booking_date || booking.created_at;
+  const tripStartTime = booking.Trip?.start_time;
+
+  switch (booking.status) {
+    case 'completed':
+    case 'cancelled':
+      return 'past';
+    case 'in_progress':
+      return 'active';
+    case 'pending':
+    case 'confirmed':
+      // Check if trip time has passed
+      if (tripStartTime && new Date(tripStartTime) < now) {
+        return 'past';
+      }
+      return 'upcoming';
+    default:
+      return 'upcoming';
+  }
+}
 
 // Get booking details with full information
 exports.getBookingDetails = async (req, res) => {
@@ -790,6 +781,7 @@ exports.getBookingDetails = async (req, res) => {
 
     if (!id) {
       return res.status(400).json({
+        statusCode: 400,
         status: 'error',
         message: 'Booking ID is required'
       });
@@ -805,23 +797,13 @@ exports.getBookingDetails = async (req, res) => {
           model: Trip,
           include: [
             {
-              model: db.Route,
+              model: Route,
               attributes: ['route_id', 'route_name', 'start_point', 'end_point']
             },
             {
-              model: db.Vehicle,
+              model: Vehicle,
               attributes: ['vehicle_id', 'plate_number', 'vehicle_type', 'color', 'seat_capacity'],
               required: false
-            },
-            {
-              model: db.Driver,
-              attributes: ['driver_id', 'rating'],
-              required: false,
-              include: [{
-                model: User,
-                attributes: ['first_name', 'last_name', 'profile_picture'],
-                required: false
-              }]
             }
           ],
           attributes: ['trip_id', 'start_time', 'end_time', 'status']
@@ -838,60 +820,39 @@ exports.getBookingDetails = async (req, res) => {
         },
         {
           model: BookingSeat,
-          as: 'booking_seats',
+          as: 'booking_seats', // ✅ Use correct alias
           include: [{
             model: Seat,
             attributes: ['seat_id', 'seat_number', 'seat_type']
           }],
-          attributes: ['booking_seat_id', 'passenger_name', 'is_occupied', 'boarded_at', 'alighted_at']
+          attributes: ['booking_seat_id', 'passenger_name', 'is_occupied', 'boarded_at', 'alighted_at'],
+          required: false // ✅ Make it optional
         }
       ]
     });
 
     if (!booking) {
       return res.status(404).json({
+        statusCode: 404,
         status: 'error',
         message: 'Booking not found'
       });
     }
 
-    // If this is part of a multi-day booking, get related bookings
-    let relatedBookings = [];
-    if (booking.is_multi_day && booking.booking_reference) {
-      relatedBookings = await Booking.findAll({
-        where: {
-          booking_reference: booking.booking_reference,
-          user_id: req.userId,
-          booking_id: { [Op.ne]: booking.booking_id }
-        },
-        include: [
-          {
-            model: Trip,
-            include: [{
-              model: db.Route,
-              attributes: ['route_name']
-            }],
-            attributes: ['trip_id', 'start_time', 'status']
-          }
-        ],
-        attributes: ['booking_id', 'travel_date', 'fare_amount', 'passenger_count', 'status', 'qr_code_data'],
-        order: [['travel_date', 'ASC']]
-      });
-    }
-
     res.status(200).json({
+      statusCode: 200,
       status: 'success',
       data: {
         ...booking.toJSON(),
         seat_details: booking.booking_seats,
-        qr_code: booking.qr_code_data,
-        related_bookings: relatedBookings
+        qr_code: booking.qr_code_data
       }
     });
 
   } catch (error) {
     console.error('❌ Error getting booking details:', error);
     res.status(500).json({
+      statusCode: 500,
       status: 'error',
       message: 'Failed to fetch booking details'
     });

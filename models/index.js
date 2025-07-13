@@ -58,9 +58,18 @@ Booking.belongsTo(User, { foreignKey: 'user_id' });
 Booking.belongsTo(Trip, { foreignKey: 'trip_id' });
 Booking.belongsTo(Stop, { foreignKey: 'pickup_stop_id', as: 'pickupStop' });
 Booking.belongsTo(Stop, { foreignKey: 'dropoff_stop_id', as: 'dropoffStop' });
+Booking.hasMany(BookingSeat, { foreignKey: 'booking_id', as: 'booking_seats' });
+BookingSeat.belongsTo(Booking, { foreignKey: 'booking_id' });
+
+// Also add if missing:
+BookingSeat.belongsTo(Seat, { foreignKey: 'seat_id' });
+Seat.hasMany(BookingSeat, { foreignKey: 'seat_id' });
 
 Payment.belongsTo(Booking, { foreignKey: 'booking_id' });
 Payment.belongsTo(User, { foreignKey: 'user_id' });
+
+Booking.hasMany(Payment, { foreignKey: 'booking_id' });
+User.hasMany(Payment, { foreignKey: 'user_id' });
 
 Review.belongsTo(User, { foreignKey: 'user_id' });
 Review.belongsTo(Trip, { foreignKey: 'trip_id' });

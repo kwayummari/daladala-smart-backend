@@ -64,6 +64,8 @@ exports.processPayment = async (req, res) => {
   try {
     const { booking_id, payment_method, phone_number, amount: sentAmount } = req.body;
 
+    console.log(req.body);
+
     // Validate required fields
     if (!booking_id || !payment_method) {
       return res.status(400).json({
@@ -102,7 +104,7 @@ exports.processPayment = async (req, res) => {
 
     console.log('💳 Processing payment for booking:');
     console.log('   Booking ID:', booking.booking_id);
-    console.log('   Fare Amount:', booking.fare_amount);
+    console.log('   Fare Amount:', sentAmount);
     console.log('   Payment Method:', payment_method);
 
     // Check if payment already exists
@@ -118,24 +120,22 @@ exports.processPayment = async (req, res) => {
     }
 
     let responseData = {};
-    const amount = parseFloat(booking.fare_amount);
 
     // Validate amount
-    if (isNaN(amount) || amount <= 0) {
+    if (isNaN(sentAmount) || sentAmount <= 0) {
       return res.status(400).json({
         status: 'error',
         message: 'Invalid booking amount',
         debug: {
-          fare_amount: booking.fare_amount,
+          fare_amount: sentAmount,
           frontend_sent_amount: sentAmount,
-          parsed_amount: amount
         }
       });
     }
 
     if (payment_method === 'wallet') {
       // Handle wallet payment
-      const success = await deductFromWallet(req.userId, amount, booking.booking_id);
+      const success = await deductFromWallet(req.userId, sentAmount, booking.booking_id);
 
       if (!success) {
         return res.status(400).json({
@@ -148,7 +148,7 @@ exports.processPayment = async (req, res) => {
       const payment = await Payment.create({
         booking_id: booking.booking_id,
         user_id: req.userId,
-        amount: amount,
+        amount: sentAmount,
         payment_method: 'wallet',
         status: 'completed',
         payment_time: new Date()
@@ -171,7 +171,7 @@ exports.processPayment = async (req, res) => {
 
       responseData = {
         payment_id: payment.payment_id,
-        amount: amount,
+        amount: sentAmount,
         payment_method: 'wallet',
         status: 'completed'
       };
