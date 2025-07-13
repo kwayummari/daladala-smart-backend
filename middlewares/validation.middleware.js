@@ -102,10 +102,59 @@ const verificationValidationRules = (type) => {
 
 const bookingValidationRules = () => {
   return [
-    body('trip_id').isInt().withMessage('Valid trip ID is required'),
-    body('pickup_stop_id').isInt().withMessage('Valid pickup stop ID is required'),
-    body('dropoff_stop_id').isInt().withMessage('Valid dropoff stop ID is required'),
-    body('passenger_count').isInt({ min: 1 }).withMessage('At least one passenger is required')
+    body('trip_id')
+      .isInt({ min: 1 })
+      .withMessage('Valid trip ID is required'),
+    body('pickup_stop_id')
+      .isInt({ min: 1 })
+      .withMessage('Valid pickup stop ID is required'),
+    body('dropoff_stop_id')
+      .isInt({ min: 1 })
+      .withMessage('Valid dropoff stop ID is required'),
+    body('passenger_count')
+      .optional()
+      .isInt({ min: 1, max: 10 })
+      .withMessage('Passenger count must be between 1 and 10'),
+  ];
+};
+
+const multipleBookingValidationRules = () => {
+  return [
+    body('bookings_data')
+      .isArray({ min: 1, max: 10 })
+      .withMessage('bookings_data must be an array with 1-10 bookings'),
+    body('bookings_data.*.trip_id')
+      .isInt({ min: 1 })
+      .withMessage('Each booking must have a valid trip ID'),
+    body('bookings_data.*.pickup_stop_id')
+      .isInt({ min: 1 })
+      .withMessage('Each booking must have a valid pickup stop ID'),
+    body('bookings_data.*.dropoff_stop_id')
+      .isInt({ min: 1 })
+      .withMessage('Each booking must have a valid dropoff stop ID'),
+    body('bookings_data.*.passenger_count')
+      .optional()
+      .isInt({ min: 1, max: 10 })
+      .withMessage('Passenger count must be between 1 and 10'),
+  ];
+};
+
+const paymentValidationRules = () => {
+  return [
+    body('booking_id')
+      .isInt({ min: 1 })
+      .withMessage('Valid booking ID is required'),
+    body('payment_method')
+      .isIn(['mobile_money', 'wallet', 'card'])
+      .withMessage('Payment method must be mobile_money, wallet, or card'),
+    body('phone_number')
+      .if(body('payment_method').equals('mobile_money'))
+      .matches(/^(0|255)7\d{8}$/)
+      .withMessage('Valid Tanzanian phone number is required for mobile money'),
+    body('amount')
+      .optional()
+      .isFloat({ min: 100 })
+      .withMessage('Amount must be at least 100'),
   ];
 };
 
@@ -114,7 +163,10 @@ const validationMiddleware = {
   simplifiedUserValidationRules,
   loginValidationRules,
   verificationValidationRules,
-  bookingValidationRules
+  bookingValidationRules,
+  bookingValidationRules,
+  multipleBookingValidationRules,
+  paymentValidationRules
 };
 
 module.exports = validationMiddleware;

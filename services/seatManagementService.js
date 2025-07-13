@@ -8,43 +8,83 @@ class SeatManagementService {
     // Get available seats for a trip
     static async getAvailableSeats(tripId, pickupStopId, dropoffStopId) {
         try {
-            const trip = await Trip.findByPk(tripId, {
+            const trip = await db.Trip.findByPk(tripId, {
+                include: [{ model: db.Vehicle, as: 'vehicle' }]
+            });
+
+            if (!trip || !trip.vehicle) {
+                throw new Error('Trip or vehicle not found');
+            }
+
+            const totalSeats = trip.vehicle.seat_capacity || 30;
+
+            // Get all bookings for this trip
+            const bookings = await db.Booking.findAll({
+                where: {
+                    trip_id: tripId,
+                    status: { [Op.in]: ['confirmed', 'in_progress'] }
+                },
                 include: [
                     {
-                        model: Vehicle,
-                        as: 'vehicle',
-                        attributes: ['seat_capacity']
+                        model: db.Stop,
+                        as: 'pickupStop',
+                        include: [{ model: db.RouteStop, as: 'routeStops' }]
+                    },
+                    {
+                        model: db.Stop,
+                        as: 'dropoffStop',
+                        include: [{ model: db.RouteStop, as: 'routeStops' }]
                     }
                 ]
             });
 
-            if (!trip) {
-                throw new Error('Trip not found');
+            // If no pickup/dropoff specified, return overall availability
+            if (!pickupStopId || !dropoffStopId) {
+                const totalBookedPassengers = bookings.reduce((sum, booking) => sum + booking.passenger_count, 0);
+                return {
+                    total_seats: totalSeats,
+                    available_seats: Math.max(0, totalSeats - totalBookedPassengers),
+                    occupied_seats: totalBookedPassengers,
+                    seats: this.generateSeatMap(totalSeats, [])
+                };
             }
 
-            // Get all seats for this vehicle
-            const allSeats = await Seat.findAll({
-                where: { vehicle_id: trip.vehicle_id },
-                order: [['seat_number', 'ASC']]
+            // Get route stop orders for segment calculation
+            const [pickupRouteStop, dropoffRouteStop] = await Promise.all([
+                db.RouteStop.findOne({
+                    where: { route_id: trip.route_id, stop_id: pickupStopId }
+                }),
+                db.RouteStop.findOne({
+                    where: { route_id: trip.route_id, stop_id: dropoffStopId }
+                })
+            ]);
+
+            if (!pickupRouteStop || !dropoffRouteStop) {
+                throw new Error('Invalid pickup or dropoff stop for this route');
+            }
+
+            // Find conflicting bookings (overlapping segments)
+            const conflictingBookings = bookings.filter(booking => {
+                const bookingPickupOrder = booking.pickupStop?.routeStops?.[0]?.stop_order;
+                const bookingDropoffOrder = booking.dropoffStop?.routeStops?.[0]?.stop_order;
+
+                if (!bookingPickupOrder || !bookingDropoffOrder) return false;
+
+                // Check if segments overlap
+                return !(bookingDropoffOrder <= pickupRouteStop.stop_order ||
+                    bookingPickupOrder >= dropoffRouteStop.stop_order);
             });
 
-            // Get occupied seats for this trip segment
-            const occupiedSeats = await this.getOccupiedSeatsForSegment(tripId, pickupStopId, dropoffStopId);
-            const occupiedSeatIds = occupiedSeats.map(seat => seat.seat_id);
-
-            // Filter available seats
-            const availableSeats = allSeats.filter(seat => !occupiedSeatIds.includes(seat.seat_id));
+            const occupiedPassengers = conflictingBookings.reduce((sum, booking) => sum + booking.passenger_count, 0);
+            const occupiedSeatNumbers = conflictingBookings
+                .filter(booking => booking.seat_numbers)
+                .flatMap(booking => booking.seat_numbers.split(','));
 
             return {
-                total_seats: trip.vehicle.seat_capacity,
-                available_seats: availableSeats.length,
-                occupied_seats: occupiedSeats.length,
-                seats: allSeats.map(seat => ({
-                    seat_id: seat.seat_id,
-                    seat_number: seat.seat_number,
-                    is_available: !occupiedSeatIds.includes(seat.seat_id),
-                    is_occupied: occupiedSeatIds.includes(seat.seat_id)
-                }))
+                total_seats: totalSeats,
+                available_seats: Math.max(0, totalSeats - occupiedPassengers),
+                occupied_seats: occupiedPassengers,
+                seats: this.generateSeatMap(totalSeats, occupiedSeatNumbers)
             };
 
         } catch (error) {
@@ -52,6 +92,24 @@ class SeatManagementService {
             throw error;
         }
     }
+
+    static generateSeatMap(totalSeats, occupiedSeatNumbers) {
+        const seats = [];
+
+        for (let i = 1; i <= totalSeats; i++) {
+            const seatNumber = `S${i.toString().padStart(2, '0')}`;
+            seats.push({
+                seat_number: seatNumber,
+                seat_position: i,
+                is_available: !occupiedSeatNumbers.includes(seatNumber),
+                row: Math.ceil(i / 4),
+                column: ((i - 1) % 4) + 1
+            });
+        }
+
+        return seats;
+      }
+    
 
     // Get occupied seats for a specific route segment
     static async getOccupiedSeatsForSegment(tripId, pickupStopId, dropoffStopId) {
@@ -118,72 +176,37 @@ class SeatManagementService {
     }
 
     // Reserve seats for a booking
-    static async reserveSeats(bookingId, tripId, seatNumbers, passengerNames = []) {
+    static async reserveSeats(bookingId, seatNumbers) {
         const transaction = await db.sequelize.transaction();
 
         try {
-            const booking = await Booking.findByPk(bookingId);
+            const booking = await db.Booking.findByPk(bookingId, { transaction });
             if (!booking) {
                 throw new Error('Booking not found');
             }
 
-            const trip = await Trip.findByPk(tripId, {
-                include: [{ model: Vehicle, as: 'vehicle' }]
-            });
-
-            if (!trip) {
-                throw new Error('Trip not found');
+            // Validate seat count matches passenger count
+            if (seatNumbers.length !== booking.passenger_count) {
+                throw new Error(`Must select exactly ${booking.passenger_count} seats`);
             }
 
-            // Validate seat numbers
-            const seats = await Seat.findAll({
-                where: {
-                    vehicle_id: trip.vehicle_id,
-                    seat_number: { [Op.in]: seatNumbers }
-                }
-            });
-
-            if (seats.length !== seatNumbers.length) {
-                throw new Error('Some seat numbers are invalid for this vehicle');
-            }
-
-            // Check if seats are available for this segment
-            const occupiedSeats = await this.getOccupiedSeatsForSegment(
-                tripId,
+            // Check seat availability for this trip segment
+            const availableSeats = await this.getAvailableSeats(
+                booking.trip_id,
                 booking.pickup_stop_id,
                 booking.dropoff_stop_id
             );
 
-            const occupiedSeatIds = occupiedSeats.map(seat => seat.seat_id);
-            const requestedSeatIds = seats.map(seat => seat.seat_id);
+            const unavailableSeats = seatNumbers.filter(seatNumber => {
+                const seat = availableSeats.seats.find(s => s.seat_number === seatNumber);
+                return !seat || !seat.is_available;
+            });
 
-            const conflictingSeats = requestedSeatIds.filter(seatId => occupiedSeatIds.includes(seatId));
-
-            if (conflictingSeats.length > 0) {
-                const conflictingSeatNumbers = seats
-                    .filter(seat => conflictingSeats.includes(seat.seat_id))
-                    .map(seat => seat.seat_number);
-                throw new Error(`Seats ${conflictingSeatNumbers.join(', ')} are not available for this route segment`);
+            if (unavailableSeats.length > 0) {
+                throw new Error(`Seats not available: ${unavailableSeats.join(', ')}`);
             }
 
-            // Create booking seat records
-            const bookingSeats = [];
-            for (let i = 0; i < seats.length; i++) {
-                const seat = seats[i];
-                const passengerName = passengerNames[i] || `${booking.user.first_name} ${booking.user.last_name}`;
-
-                const bookingSeat = await BookingSeat.create({
-                    booking_id: bookingId,
-                    seat_id: seat.seat_id,
-                    trip_id: tripId,
-                    passenger_name: passengerName,
-                    is_occupied: true
-                }, { transaction });
-
-                bookingSeats.push(bookingSeat);
-            }
-
-            // Update booking with seat information
+            // Update booking with seat numbers
             await booking.update({
                 seat_numbers: seatNumbers.join(',')
             }, { transaction });
@@ -192,11 +215,9 @@ class SeatManagementService {
 
             return {
                 success: true,
-                reserved_seats: seats.map(seat => ({
-                    seat_id: seat.seat_id,
-                    seat_number: seat.seat_number
-                })),
-                booking_id: bookingId
+                booking_id: bookingId,
+                reserved_seats: seatNumbers,
+                message: 'Seats reserved successfully'
             };
 
         } catch (error) {
@@ -204,13 +225,13 @@ class SeatManagementService {
             console.error('Error reserving seats:', error);
             throw error;
         }
-    }
+      }
 
     // Release seats when passenger alights
-    static async releaseSeat(tripId, seatId, driverId) {
+    static async releaseSeat(tripId, seatNumber, driverId) {
         try {
             // Verify driver is assigned to this trip
-            const trip = await Trip.findOne({
+            const trip = await db.Trip.findOne({
                 where: {
                     trip_id: tripId,
                     driver_id: driverId
@@ -221,32 +242,35 @@ class SeatManagementService {
                 throw new Error('Trip not found or not assigned to this driver');
             }
 
-            // Find the booking seat
-            const bookingSeat = await BookingSeat.findOne({
+            // Find booking with this seat
+            const booking = await db.Booking.findOne({
                 where: {
                     trip_id: tripId,
-                    seat_id: seatId,
-                    is_occupied: true,
-                    alighted_at: null
+                    seat_numbers: { [Op.like]: `%${seatNumber}%` },
+                    status: 'in_progress'
                 }
             });
 
-            if (!bookingSeat) {
-                throw new Error('Seat is not currently occupied or passenger has already alighted');
+            if (!booking) {
+                throw new Error('No active booking found for this seat');
             }
 
-            // Mark passenger as alighted
-            await bookingSeat.update({
-                alighted_at: new Date(),
-                is_occupied: false
+            // Remove seat from booking (mark as alighted)
+            const currentSeats = booking.seat_numbers ? booking.seat_numbers.split(',') : [];
+            const updatedSeats = currentSeats.filter(seat => seat !== seatNumber);
+
+            await booking.update({
+                seat_numbers: updatedSeats.join(','),
+                alighted_seats: booking.alighted_seats
+                    ? `${booking.alighted_seats},${seatNumber}`
+                    : seatNumber
             });
 
-            // The seat becomes available automatically via trigger
             return {
                 success: true,
-                message: 'Passenger marked as alighted, seat is now available',
-                seat_id: seatId,
-                alighted_at: new Date()
+                message: 'Seat released successfully',
+                released_seat: seatNumber,
+                booking_id: booking.booking_id
             };
 
         } catch (error) {
@@ -254,7 +278,66 @@ class SeatManagementService {
             throw error;
         }
     }
+    
+    static async autoAssignSeats(tripId, pickupStopId, dropoffStopId, passengerCount) {
+        try {
+            const availableSeats = await this.getAvailableSeats(tripId, pickupStopId, dropoffStopId);
 
+            if (availableSeats.available_seats < passengerCount) {
+                throw new Error('Not enough seats available');
+            }
+
+            // Get the first available seats
+            const seatsToAssign = availableSeats.seats
+                .filter(seat => seat.is_available)
+                .slice(0, passengerCount)
+                .map(seat => seat.seat_number);
+
+            return seatsToAssign;
+
+        } catch (error) {
+            console.error('Error auto-assigning seats:', error);
+            throw error;
+        }
+    }
+
+    static async getTripSeatStats(tripId) {
+        try {
+            const trip = await db.Trip.findByPk(tripId, {
+                include: [{ model: db.Vehicle, as: 'vehicle' }]
+            });
+
+            if (!trip) {
+                throw new Error('Trip not found');
+            }
+
+            const totalSeats = trip.vehicle?.seat_capacity || 30;
+
+            const bookings = await db.Booking.findAll({
+                where: {
+                    trip_id: tripId,
+                    status: { [Op.in]: ['confirmed', 'in_progress'] }
+                }
+            });
+
+            const totalBookedPassengers = bookings.reduce((sum, booking) => sum + booking.passenger_count, 0);
+            const occupancyRate = totalSeats > 0 ? (totalBookedPassengers / totalSeats) * 100 : 0;
+
+            return {
+                trip_id: tripId,
+                total_seats: totalSeats,
+                booked_seats: totalBookedPassengers,
+                available_seats: Math.max(0, totalSeats - totalBookedPassengers),
+                occupancy_rate: Math.round(occupancyRate * 100) / 100,
+                bookings_count: bookings.length
+            };
+
+        } catch (error) {
+            console.error('Error getting trip seat stats:', error);
+            throw error;
+        }
+    }
+    
     // Mark passenger as boarded
     static async markPassengerBoarded(tripId, seatId, driverId) {
         try {
