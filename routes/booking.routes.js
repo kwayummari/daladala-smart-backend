@@ -1,13 +1,8 @@
-// routes/booking.routes.js - COMPLETE ENHANCED VERSION
+// routes/booking.routes.js - FIXED VERSION
 const express = require('express');
 const router = express.Router();
 const bookingController = require('../controllers/booking.controller');
 const { verifyToken } = require('../middlewares/auth.middleware');
-
-// Import validation rules - you'll need to create this file if it doesn't exist
-// const { validate, bookingValidationRules, multipleBookingValidationRules } = require('../middlewares/validation.middleware');
-
-// For now, let's create simple validation inline
 const { body, validationResult } = require('express-validator');
 
 // Simple validation middleware
@@ -36,37 +31,14 @@ const bookingValidationRules = () => {
             .optional()
             .isArray()
             .withMessage('Seat numbers must be an array'),
-        body('seat_numbers.*')
-            .optional()
-            .isString()
-            .withMessage('Each seat number must be a string'),
         body('passenger_names')
             .optional()
             .isArray()
             .withMessage('Passenger names must be an array'),
-        body('passenger_names.*')
-            .optional()
-            .isString()
-            .isLength({ min: 1, max: 100 })
-            .withMessage('Each passenger name must be a string between 1-100 characters'),
         body('travel_date')
             .optional()
             .isDate()
             .withMessage('Travel date must be a valid date'),
-        // Custom validation for seat consistency
-        body().custom((value) => {
-            if (value.seat_numbers && value.passenger_count) {
-                if (value.seat_numbers.length !== value.passenger_count) {
-                    throw new Error('Number of selected seats must match passenger count');
-                }
-            }
-            if (value.seat_numbers && value.passenger_names) {
-                if (value.passenger_names.length > 0 && value.passenger_names.length !== value.seat_numbers.length) {
-                    throw new Error('Number of passenger names must match number of selected seats');
-                }
-            }
-            return true;
-        })
     ];
 };
 
@@ -92,35 +64,6 @@ const multipleBookingValidationRules = () => {
         body('bookings_data.*.travel_date')
             .isDate()
             .withMessage('Each booking must have a valid travel date'),
-        body('bookings_data.*.seat_numbers')
-            .optional()
-            .isArray()
-            .withMessage('Seat numbers must be an array'),
-        body('bookings_data.*.passenger_names')
-            .optional()
-            .isArray()
-            .withMessage('Passenger names must be an array'),
-        body('is_multi_day')
-            .optional()
-            .isBoolean()
-            .withMessage('is_multi_day must be a boolean'),
-        body('date_range')
-            .optional()
-            .isIn(['single', 'week', 'month', '3months'])
-            .withMessage('date_range must be one of: single, week, month, 3months'),
-        // Custom validation for total passengers across all bookings
-        body().custom((value) => {
-            if (value.bookings_data) {
-                const totalPassengers = value.bookings_data.reduce((sum, booking) => {
-                    return sum + (booking.passenger_count || 1);
-                }, 0);
-
-                if (totalPassengers > 10) {
-                    throw new Error('Total passengers across all bookings cannot exceed 10');
-                }
-            }
-            return true;
-        })
     ];
 };
 
@@ -131,86 +74,30 @@ router.use(verifyToken);
 // BOOKING MANAGEMENT ROUTES
 // ===============================
 
-// Create single booking with optional seat selection
-/**
- * POST /api/bookings
- * Body: {
- *   trip_id: number,
- *   pickup_stop_id: number,
- *   dropoff_stop_id: number,
- *   passenger_count: number,
- *   seat_numbers?: string[],
- *   passenger_names?: string[],
- *   travel_date?: string
- * }
- */
 router.post('/', bookingValidationRules(), validate, bookingController.createBooking);
-
-// Create multiple bookings for multi-day trips
-/**
- * POST /api/bookings/multiple
- * Body: {
- *   bookings_data: Array<{
- *     trip_id: number,
- *     pickup_stop_id: number,
- *     dropoff_stop_id: number,
- *     passenger_count: number,
- *     seat_numbers?: string[],
- *     passenger_names?: string[],
- *     travel_date: string
- *   }>,
- *   is_multi_day?: boolean,
- *   date_range?: string
- * }
- */
 router.post('/multiple', multipleBookingValidationRules(), validate, bookingController.createMultipleBookings);
-
-// Get user bookings (with enhanced grouping for multi-day)
-/**
- * GET /api/bookings
- * Query params: ?status=pending&booking_type=regular&travel_date=2025-07-15&is_multi_day=true
- */
 router.get('/', bookingController.getUserBookings);
-
-// Get specific booking details (with related bookings for multi-day)
-/**
- * GET /api/bookings/:id
- */
 router.get('/:id', bookingController.getBookingDetails);
-
-// Cancel booking (single or entire multi-day group)
-/**
- * PUT /api/bookings/:id/cancel
- * Body: { cancel_entire_group?: boolean }
- */
 router.put('/:id/cancel', bookingController.cancelBooking);
 
 // ===============================
 // SEAT MANAGEMENT ROUTES
 // ===============================
 
-// Get available seats for a trip on a specific date
-/**
- * GET /api/bookings/:trip_id/seats
- * Query params: ?travel_date=2025-07-15
- */
+// CRITICAL FIX: This route must come BEFORE the /:id route to avoid conflicts
 router.get('/:trip_id/seats', bookingController.getAvailableSeats);
 
-// Release seat when passenger alights
-/**
- * PUT /api/bookings/seats/:booking_seat_id/release
- */
+// Release seat when passenger alights  
 router.put('/seats/:booking_seat_id/release', bookingController.releaseSeat);
 
 // ===============================
 // ADDITIONAL HELPER ROUTES
 // ===============================
 
-// Get booking statistics (optional - for analytics)
+// Get booking statistics
 router.get('/stats/user', async (req, res) => {
     try {
         const { Booking } = require('../models');
-        const { Op } = require('sequelize');
 
         const stats = await Booking.findAll({
             where: { user_id: req.userId },
@@ -236,7 +123,7 @@ router.get('/stats/user', async (req, res) => {
     }
 });
 
-// Get recent bookings (for dashboard)
+// Get recent bookings
 router.get('/recent', async (req, res) => {
     try {
         const { Booking, Trip, Stop } = require('../models');
@@ -245,7 +132,7 @@ router.get('/recent', async (req, res) => {
             where: {
                 user_id: req.userId,
                 booking_time: {
-                    [require('sequelize').Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
+                    [require('sequelize').Op.gte]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
                 }
             },
             include: [

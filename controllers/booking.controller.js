@@ -1086,4 +1086,5 @@ exports.releaseSeat = async (req, res) => {
       message: 'Failed to release seat'
     });
   }
+
 };
