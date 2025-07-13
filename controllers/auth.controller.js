@@ -54,8 +54,6 @@ exports.register = async (req, res) => {
       national_id // Required field
     } = req.body;
 
-    console.log(req.body);
-
     // Validate national ID
     if (!national_id || national_id.length < 10) {
       return res.status(400).json({
@@ -197,7 +195,7 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { identifier, password, remember_me = false } = req.body;
-    // identifier can be phone or email
+    console.log(req.body);
 
     if (!identifier || !password) {
       return res.status(400).json({

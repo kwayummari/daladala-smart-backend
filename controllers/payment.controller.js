@@ -62,7 +62,7 @@ async function deductFromWallet(userId, amount, bookingId) {
 // Process payment
 exports.processPayment = async (req, res) => {
   try {
-    const { booking_id, payment_method, phone_number } = req.body;
+    const { booking_id, payment_method, phone_number, amount: sentAmount } = req.body;
 
     // Validate required fields
     if (!booking_id || !payment_method) {
@@ -90,6 +90,8 @@ exports.processPayment = async (req, res) => {
         }]
       }]
     });
+
+    console.log("=======".$booking);
 
     if (!booking) {
       return res.status(404).json({
@@ -125,6 +127,7 @@ exports.processPayment = async (req, res) => {
         message: 'Invalid booking amount',
         debug: {
           fare_amount: booking.fare_amount,
+          frontend_sent_amount: sentAmount,
           parsed_amount: amount
         }
       });
@@ -193,7 +196,7 @@ exports.processPayment = async (req, res) => {
       const payment = await Payment.create({
         booking_id: booking.booking_id,
         user_id: req.userId,
-        amount: amount,
+        amount: sentAmount,
         payment_method: 'mobile_money',
         payment_provider: 'zenopay',
         status: 'pending',
@@ -204,7 +207,8 @@ exports.processPayment = async (req, res) => {
       console.log('💳 Payment record created:', {
         payment_id: payment.payment_id,
         external_reference: orderId,
-        booking_id: booking.booking_id
+        booking_id: booking.booking_id,
+        amount: sentAmount
       });
 
       // Process with ZenoPay using OUR generated order ID
@@ -213,7 +217,7 @@ exports.processPayment = async (req, res) => {
         userEmail: user.email,
         userName: `${user.first_name} ${user.last_name}`,
         userPhone: phone_number,
-        amount: amount
+        amount: sentAmount
       });
 
       if (zenoResult.success) {
@@ -234,7 +238,7 @@ exports.processPayment = async (req, res) => {
 
         responseData = {
           payment_id: payment.payment_id,
-          amount: amount,
+          amount: sentAmount,
           payment_method: 'mobile_money',
           status: 'pending',
           external_reference: orderId,
@@ -622,10 +626,10 @@ async function handleBookingPayment(orderId, status, webhookData, reference) {
 
       // Update booking status
       const booking = await db.Booking.findByPk(payment.booking_id, { transaction });
-        await booking.update({
-          status: 'confirmed',
-          payment_status: 'paid'
-        }, { transaction });
+      await booking.update({
+        status: 'confirmed',
+        payment_status: 'paid'
+      }, { transaction });
 
       await transaction.commit();
 
