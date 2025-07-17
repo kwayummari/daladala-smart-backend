@@ -96,7 +96,7 @@ module.exports = (sequelize, DataTypes) => {
 
     Driver.hasMany(models.Vehicle, {
       foreignKey: 'driver_id',
-      as: 'vehicles'
+      as: 'Vehicles'
     });
 
     Driver.hasMany(models.OnDemandRequest, {

@@ -113,17 +113,17 @@ exports.driverLogin = async (req, res) => {
             include: [
                 {
                     model: Vehicle,
-                    as: 'vehicles',
-                    where: { is_active: true },
+                    as: 'Vehicles',
+                    where: { status: 'active' },
                     required: false,
                     attributes: [
                         'vehicle_id',
                         'plate_number',
-                        'vehicle_type',
                         'model',
-                        'capacity',
+                        'seat_capacity',
+                        'year',
                         'color',
-                        'is_air_conditioned'
+                        'status'
                     ]
                 }
             ]
@@ -154,8 +154,8 @@ exports.driverLogin = async (req, res) => {
         const token = generateToken(user, driver);
 
         // Get primary vehicle (first active vehicle)
-        const primaryVehicle = driver.vehicles && driver.vehicles.length > 0
-            ? driver.vehicles[0]
+        const primaryVehicle = driver.Vehicles && driver.Vehicles.length > 0
+            ? driver.Vehicles[0]
             : null;
 
         // Set token expiration based on remember_me
@@ -198,7 +198,7 @@ exports.driverLogin = async (req, res) => {
                     capacity: primaryVehicle.capacity,
                     color: primaryVehicle.color,
                     is_air_conditioned: primaryVehicle.is_air_conditioned,
-                    is_active: true
+                    status: primaryVehicle.status
                 } : null
             }
         });
@@ -381,8 +381,8 @@ exports.getDriverProfile = async (req, res) => {
             include: [
                 {
                     model: Vehicle,
-                    as: 'vehicles',
-                    where: { is_active: true },
+                    as: 'Vehicles',
+                    where: { status: 'active' },
                     required: false
                 }
             ]
