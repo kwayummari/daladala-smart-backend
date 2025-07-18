@@ -49,6 +49,7 @@ exports.driverLogin = async (req, res) => {
         // Find user by phone and check if they are a driver
         const user = await User.findOne({
             where: { phone },
+            attributes: ['user_id', 'first_name', 'last_name', 'email', 'phone', 'profile_picture', 'status', 'is_verified', 'password', 'created_at', 'updated_at'],
             include: [
                 {
                     model: UserRole,
@@ -58,7 +59,7 @@ exports.driverLogin = async (req, res) => {
             ]
         });
 
-        console.log('User found:', user ? 'Yes' : 'No');
+        console.log('User found:', user ? 'Yes' : 'No', user);
 
         if (!user) {
             return res.status(404).json({
