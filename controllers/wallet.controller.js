@@ -50,7 +50,6 @@ exports.topUpWallet = async (req, res) => {
 
     try {
         const { amount, phone_number } = req.body;
-
         // Validate input
         if (!amount || !phone_number) {
             await transaction.rollback();
@@ -80,6 +79,7 @@ exports.topUpWallet = async (req, res) => {
         // Validate phone number format
         const phoneRegex = /^(0|255)7\d{8}$/;
         if (!phoneRegex.test(phone_number.replace(/[\s\-\+]/g, ''))) {
+            console.log(`Invalid phone number format: ${phone_number}`);
             await transaction.rollback();
             return res.status(400).json({
                 status: 'error',
@@ -144,7 +144,7 @@ exports.topUpWallet = async (req, res) => {
         const zenoPaymentData = {
             bookingId: `TOPUP_${Date.now()}_${req.userId}`,
             userEmail: user.email,
-            userName: `${user.first_name} ${user.last_name}`,
+            userName: `${user.first_name} ${user.last_name} ?? 'Daladala Smart'`,
             userPhone: phone_number,
             amount: amount
         };
