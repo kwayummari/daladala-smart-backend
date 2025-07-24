@@ -141,7 +141,7 @@ exports.driverRegister = async (req, res) => {
             password: hashedPassword,
             role_id: driverRole.role_id,
             is_verified: false, // Requires verification
-            status: 'pending_approval' // Requires admin approval
+            status: 'pending' // Requires admin approval
         }, { transaction });
 
         // Create driver profile
@@ -159,6 +159,7 @@ exports.driverRegister = async (req, res) => {
         }, { transaction });
 
         // Create vehicle if provided
+
         let newVehicle = null;
         if (vehicle_plate_number && vehicle_model && vehicle_type && vehicle_capacity) {
             newVehicle = await Vehicle.create({
@@ -166,11 +167,12 @@ exports.driverRegister = async (req, res) => {
                 plate_number: vehicle_plate_number,
                 vehicle_type,
                 model: vehicle_model,
+                seat_capacity: parseInt(vehicle_capacity),
                 capacity: parseInt(vehicle_capacity),
                 color: vehicle_color || null,
                 year: vehicle_year || null,
                 is_air_conditioned: false, // Default value
-                status: 'pending_inspection', // Requires inspection
+                status: 'inactive', // Requires inspection
                 is_active: false // Will be activated after approval
             }, { transaction });
         }
@@ -242,7 +244,7 @@ exports.driverLogin = async (req, res) => {
                 },
                 {
                     model: Driver,
-                    as: 'driverProfile',
+                    // as: 'driverProfile',
                     include: [
                         {
                             model: Vehicle,
@@ -289,7 +291,7 @@ exports.driverLogin = async (req, res) => {
         }
 
         // Check approval status
-        const driver = user.driverProfile;
+        const driver = user.Driver;
         if (!driver) {
             return res.status(403).json({
                 status: 'error',
