@@ -19,4 +19,6 @@ router.get('/trips', driverController.getAssignedTrips);
 // Get driver statistics
 router.get('/statistics', driverController.getStatistics);
 
+router.get('/earnings', driverController.getEarnings);
+
 module.exports = router;
