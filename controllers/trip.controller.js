@@ -693,8 +693,7 @@ exports.startTrip = async (req, res) => {
 
     await trip.update({
       status: 'in_progress',
-      // Set actual start time if different from scheduled
-      start_time: new Date()
+      actual_start_time: new Date()
     });
 
     res.status(200).json({
@@ -746,7 +745,7 @@ exports.endTrip = async (req, res) => {
 
     await trip.update({
       status: 'completed',
-      end_time: new Date()
+      actual_end_time: new Date()
     });
 
     // Update all associated bookings to completed
@@ -912,7 +911,9 @@ exports.getDriverTrips = async (req, res) => {
           route_number: trip.Route?.route_number || 'N/A',
           vehicle_plate: trip.Vehicle?.plate_number || 'Unknown',
           start_time: trip.start_time,
+          actual_start_time: trip.actual_start_time,
           end_time: trip.end_time,
+          actual_end_time: trip.actual_end_time,
           status: trip.status,
           passenger_count: passengerCount,
           Route: trip.Route,
