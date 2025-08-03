@@ -320,3 +320,125 @@ exports.getEarnings = async (req, res) => {
     });
   }
 };
+
+// Get driver notifications
+exports.getNotifications = async (req, res) => {
+  try {
+    const driver = await Driver.findOne({
+      where: { user_id: req.userId }
+    });
+
+    if (!driver) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Driver profile not found'
+      });
+    }
+
+    const notifications = await db.Notification.findAll({
+      where: {
+        user_id: req.userId
+      },
+      order: [['created_at', 'DESC']],
+      limit: 10
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: notifications
+    });
+  } catch (error) {
+    console.error('Get notifications error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Mark notification as read
+exports.markNotificationAsRead = async (req, res) => {
+  try {
+    const { notification_id } = req.params;
+    const driver = await Driver.findOne({
+      where: { user_id: req.userId }
+    });
+
+    if (!driver) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Driver profile not found'
+      });
+    }
+
+    const notification = await db.Notification.findOne({
+      where: {
+        notification_id: notification_id,
+        user_id: req.userId
+      }
+    });
+
+    if (!notification) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Notification not found'
+      });
+    }
+
+    await notification.update({
+      is_read: true,
+      read_at: new Date()
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Notification marked as read'
+    });
+  } catch (error) {
+    console.error('Mark notification as read error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Mark all notifications as read
+exports.markAllNotificationsAsRead = async (req, res) => {
+  try {
+    const driver = await Driver.findOne({
+      where: { user_id: req.userId }
+    });
+
+    if (!driver) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Driver profile not found'
+      });
+    }
+
+    await db.Notification.update(
+      {
+        is_read: true,
+        read_at: new Date()
+      },
+      {
+        where: {
+          user_id: req.userId,
+          is_read: false
+        }
+      }
+    );
+
+    res.status(200).json({
+      status: 'success',
+      message: 'All notifications marked as read'
+    });
+  } catch (error) {
+    console.error('Mark all notifications as read error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
+  }
+};

@@ -21,4 +21,13 @@ router.get('/statistics', driverController.getStatistics);
 
 router.get('/earnings', driverController.getEarnings);
 
+// Get driver notifications
+router.get('/notifications', driverController.getNotifications);
+
+// Mark notification as read
+router.put('/notifications/:notification_id/read', driverController.markNotificationAsRead);
+
+// Mark all notifications as read
+router.put('/notifications/read-all', driverController.markAllNotificationsAsRead);
+
 module.exports = router;
